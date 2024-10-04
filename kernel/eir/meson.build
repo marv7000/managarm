@@ -1,3 +1,8 @@
+if build_uefi
+	subdir('arch/uefi')
+	subdir_done()
+endif
+
 eir_generic_sources = files(
 	'../common/libc.cpp',
 	'../common/font-8x16.cpp',

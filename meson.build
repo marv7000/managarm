@@ -35,6 +35,7 @@ if get_option('build_docs')
 endif
 
 build_kernel = get_option('build_kernel')
+build_uefi = get_option('build_uefi')
 build_drivers = get_option('build_drivers')
 build_tools = get_option('build_tools')
 provide_deps = get_option('provide_deps')
@@ -44,7 +45,7 @@ if build_kernel
 	add_project_link_arguments(['-Wl,--orphan-handling=warn', '-Wl,-znoexecstack'], language: ['c', 'cpp'])
 endif
 
-if build_kernel or build_drivers
+if build_kernel or build_uefi or build_drivers
 	add_languages('c', 'cpp', native: false)
 endif
 
@@ -58,7 +59,7 @@ endif
 
 # Set flavor = {'kernel', 'userspace', 'none'}.
 # Use this variable below if we need conflicting settings in each of the cases.
-if build_kernel
+if build_kernel or build_uefi
 	flavor = 'kernel'
 elif any_userspace
 	flavor = 'userspace'
@@ -78,7 +79,7 @@ elif flavor == 'userspace'
 		section : 'Userspace Components', bool_yn : true)
 endif
 
-if not build_kernel and not build_drivers and not build_tools and not provide_deps
+if not build_kernel and not build_uefi and not build_drivers and not build_tools and not provide_deps
 	subdir_done()
 endif
 
@@ -136,7 +137,7 @@ elif flavor == 'userspace'
 	libarch_opts = [ 'install_headers=false' ]
 endif
 
-if build_kernel or build_drivers or provide_deps
+if build_kernel or build_uefi or build_drivers or provide_deps
 	cxxshim_dep = dependency('cxxshim',
 				 required: false,
 				 fallback: ['cxxshim', 'cxxshim_dep'])
@@ -164,6 +165,10 @@ if build_kernel
 	subdir('hel')
 	subdir('kernel/eir')
 	subdir('kernel/thor')
+endif
+
+if build_uefi
+	subdir('kernel/eir')
 endif
 
 if build_drivers

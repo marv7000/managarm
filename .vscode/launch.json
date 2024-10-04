@@ -1,0 +1,18 @@
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "lldb",
+			"request": "custom",
+			"name": "Debug x86_64",
+			"targetCreateCommands": [
+				"target create /home/marvin/repos/managarm/build/pkg-builds/managarm-kernel-uefi/kernel/eir/arch/uefi/eir-uefi",
+				"target symbols add /home/marvin/repos/managarm/build/pkg-builds/managarm-kernel-uefi/kernel/eir/arch/uefi/eir-uefi.pdb",
+			],
+			"processCreateCommands": [
+				"gdb-remote localhost:1234",
+				"image load --file eir-uefi .text 0xC0001200 .data 0xC0004200"
+			]
+		}
+	]
+}
