@@ -1,8 +1,0 @@
-{
-	"clangd.path": "/home/marvin/repos/managarm/src/scripts/managarm-lsp-launcher.sh",
-	"clangd.arguments": [
-		"/home/marvin/repos/managarm/build/"
-	],
-	"clangd.onConfigChanged": "restart",
-	"mesonbuild.configureOnOpen": false
-}
