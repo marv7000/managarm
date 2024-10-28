@@ -7,8 +7,8 @@
 namespace eir {
 
 constinit OutputSink infoSink;
-constinit frg::stack_buffer_logger<LogSink> infoLogger;
-constinit frg::stack_buffer_logger<PanicSink> panicLogger;
+constinit frg::stack_buffer_logger<LogSink, 256> infoLogger;
+constinit frg::stack_buffer_logger<PanicSink, 256> panicLogger;
 
 constexpr int fontWidth = 8;
 constexpr int fontHeight = 16;

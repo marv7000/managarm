@@ -146,7 +146,7 @@ if build_kernel or build_uefi or build_drivers or provide_deps
 				 fallback: ['cxxshim', 'std_coroutine_dep'])
 endif
 
-if build_kernel or build_drivers
+if build_kernel or build_uefi or build_drivers
 	libarch = subproject('libarch',
 		default_options : libarch_opts
 	).get_variable('libarch_dep')

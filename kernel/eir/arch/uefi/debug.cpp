@@ -4,13 +4,12 @@
 #include <frg/logging.hpp>
 #include <efi.hpp>
 
-extern efi_system_table *systemTable;
-
 namespace eir {
 
+extern efi_system_table *systemTable;
 constinit OutputSink infoSink;
-constinit frg::stack_buffer_logger<LogSink> infoLogger;
-constinit frg::stack_buffer_logger<PanicSink> panicLogger;
+constinit frg::stack_buffer_logger<LogSink, 256> infoLogger;
+constinit frg::stack_buffer_logger<PanicSink, 256> panicLogger;
 
 void OutputSink::print(char c) {
 	if(systemTable) {
@@ -24,8 +23,9 @@ void OutputSink::print(char c) {
 }
 
 void OutputSink::print(const char *str) {
-	while(*str)
+	while(*str) {
 		print(*(str++));
+	}
 }
 
 void LogSink::operator()(const char *c) {

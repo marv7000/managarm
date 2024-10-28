@@ -1,13 +1,11 @@
-if build_uefi
-	subdir('arch/uefi')
-	subdir_done()
-endif
-
 eir_generic_sources = files(
 	'../common/libc.cpp',
 	'../common/font-8x16.cpp',
-	'generic/main.cpp',
-	'generic/debug.cpp')
+	'generic/main.cpp')
+
+if not build_uefi
+	eir_generic_sources += files('generic/debug.cpp')
+endif
 
 eir_generic_main = files(
 	'generic/main-function.cpp'
@@ -17,6 +15,22 @@ eir_includes = [include_directories(
 	'../klibc',
 	'../common',
 	'generic')]
+
+if build_uefi
+	eir_c_args = []
+	eir_cpp_args = []
+	eir_link_args = ['-nostdlib']
+	eir_dependencies = [frigg, libarch]
+	if arch == 'aarch64'
+		subdir('arch/arm')
+	elif arch == 'riscv64'
+		subdir('arch/riscv')
+	elif arch == 'x86_64'
+		subdir('arch/x86')
+	endif
+	subdir('arch/uefi')
+	subdir_done()
+endif
 
 eir_includes += uacpi_includes
 

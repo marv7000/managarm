@@ -1,5 +1,5 @@
-eir_uefi_sources = ['entry.cpp', 'debug.cpp', '../../generic/main.cpp', '../../../common/libc.cpp']
-inc = include_directories('../../../klibc', '../../generic', '../../../common')
+eir_uefi_sources = ['entry.cpp', 'debug.cpp']
+inc = include_directories('../../../klibc', '../../generic', '../../../common', '../x86')
 
 # HACK
 freestnd_c_hdrs_dep = dependency(
@@ -14,8 +14,10 @@ freestnd_cxx_hdrs_dep = dependency(
 	fallback: ['freestnd-cxx-hdrs', 'freestnd_cxx_hdrs_dep'],
 )
 
-executable('eir-uefi', eir_uefi_sources,
-	include_directories : inc,
-	dependencies : [frigg, freestnd_cxx_hdrs_dep],
+executable('eir-uefi', eir_uefi_sources + eir64_sources,
+	include_directories : [inc, eir_includes],
+	dependencies : [freestnd_cxx_hdrs_dep, frigg, eir_dependencies],
+	c_args: eir_c_args,
+	cpp_args: eir_cpp_args,
 	install : true
 )

@@ -178,6 +178,12 @@ void initProcessorEarly() {
 	// Keep in sync with the SMP trampoline in thor.
 	uint64_t pat = 0x00'00'01'00'00'00'04'06;
 	common::x86::wrmsr(0x277, pat);
+
+	// Clear Write Protect bit.
+	uint64_t cr0;
+	asm volatile ("mov %%cr0, %0" : "=r" (cr0));
+	cr0 &= ~(1 << 16);
+	asm volatile ("mov %0, %%cr0" : : "r" (cr0));
 }
 
 // Returns Core region index
