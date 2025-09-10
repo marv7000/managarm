@@ -73,4 +73,18 @@ char16_t *asciiToUcs2(frg::string_view &s) {
 	return ucs2;
 }
 
+frg::string<UefiAllocator> ucs2ToAscii(const char16_t *s, size_t n) {
+	frg::string<UefiAllocator> out{n};
+	for (size_t i = 0; i < n; ++i) {
+		auto c = s[i];
+		// We only use printable ASCII characters, everything else gets replaced.
+		if (c >= 0x20 && c <= 0x7E) {
+			out[i] = static_cast<char>(c);
+		} else {
+			out[i] = '?';
+		}
+	}
+	return out;
+}
+
 } // namespace eir

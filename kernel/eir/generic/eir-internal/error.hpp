@@ -10,6 +10,7 @@ enum class [[nodiscard]] Error {
 	deviceInaccessible,
 	// Error that does not fall into any other category.
 	other,
+	uefiError,
 };
 
 } // namespace eir
