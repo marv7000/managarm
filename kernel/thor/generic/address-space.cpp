@@ -152,7 +152,7 @@ coroutine<void> Mapping::runEvictionLoop() {
 				// Unmap the memory range.
 				auto unmapOutcome = owner->_ops->unmapPages(address + shootOffset, shootSize);
 				assert(unmapOutcome);
-				owner->rss_.fetch_add(unmapOutcome.value().rss, std::memory_order_relaxed);
+				owner->rss_.fetch_add(unmapOutcome.value().rssIncrease - unmapOutcome.value().rssDecrease, std::memory_order_relaxed);
 				anyRevoked = unmapOutcome.value().anyRevoked;
 
 				if(anyRevoked)
@@ -243,7 +243,7 @@ void VirtualSpace::retire() {
 
 			auto unmapOutcome = self->_ops->unmapPages(mapping->address, mapping->length);
 			assert(unmapOutcome);
-			self->rss_.fetch_add(unmapOutcome.value().rss, std::memory_order_relaxed);
+			self->rss_.fetch_add(unmapOutcome.value().rssIncrease - unmapOutcome.value().rssDecrease, std::memory_order_relaxed);
 
 			mapping = MappingTree::successor(mapping);
 		}
@@ -310,7 +310,7 @@ coroutine<void> VirtualSpace::runAgingLoop() {
 
 				auto ageOutcome = _ops->agePages(mapping->address, mapping->length);
 				assert(ageOutcome);
-				rss_.fetch_add(ageOutcome.value().rss, std::memory_order_relaxed);
+				rss_.fetch_add(ageOutcome.value().rssIncrease - ageOutcome.value().rssDecrease, std::memory_order_relaxed);
 				anyRevoked = ageOutcome.value().anyRevoked;
 
 				if(anyRevoked)
@@ -449,7 +449,7 @@ VirtualSpace::map(smarter::borrowed_ptr<MemorySlice> slice,
 				auto mapOutcome = _ops->mapPresentPages(mapping->address, mapping->view.get(),
 						mapping->viewOffset, mapping->length, pageFlags, caching);
 				assert(mapOutcome);
-				rss_.fetch_add(mapOutcome.value().rss, std::memory_order_relaxed);
+				rss_.fetch_add(mapOutcome.value().rssIncrease - mapOutcome.value().rssDecrease, std::memory_order_relaxed);
 				if(mapOutcome.value().anyRevoked)
 					co_await _ops->shootdown(mapping->address, mapping->length);
 			}
@@ -670,7 +670,7 @@ VirtualSpace::handleFault(VirtualAddr address, uint32_t faultFlags) {
 						continue;
 					}
 				} else {
-					rss_.fetch_add(remapOutcome.value().rss, std::memory_order_relaxed);
+					rss_.fetch_add(remapOutcome.value().rssIncrease - remapOutcome.value().rssDecrease, std::memory_order_relaxed);
 					if(remapOutcome.value().anyRevoked)
 						co_await _ops->shootdown(address & ~(kPageSize - 1), kPageSize);
 				}
@@ -1009,7 +1009,7 @@ coroutine<void> VirtualSpace::_unmapMappings(VirtualAddr address, size_t length,
 				// Mark pages as dirty and unmap without holding a lock.
 				auto unmapOutcome = _ops->unmapPages(mapping->address, mapping->length);
 				assert(unmapOutcome);
-				rss_.fetch_add(unmapOutcome.value().rss, std::memory_order_relaxed);
+				rss_.fetch_add(unmapOutcome.value().rssIncrease - unmapOutcome.value().rssDecrease, std::memory_order_relaxed);
 				anyRevoked = unmapOutcome.value().anyRevoked;
 
 				if(anyRevoked)
