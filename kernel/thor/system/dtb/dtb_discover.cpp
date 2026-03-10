@@ -19,7 +19,6 @@ struct DtRegister {
 	uintptr_t address;
 	uintptr_t length;
 	uintptr_t offset;
-	smarter::shared_ptr<MemoryView> memory;
 };
 
 struct DtIrqObject final : IrqObject {
@@ -51,11 +50,7 @@ struct MbusNode final : private KernelBusObject {
 			regs.emplace_back(
 				reg.addr,
 				reg.size,
-				offset,
-				smarter::allocate_shared<HardwareMemory>(*kernelAlloc,
-					reg.addr & ~(kPageSize - 1),
-					(reg.size + (kPageSize - 1)) & ~(kPageSize - 1),
-					CachingMode::mmioNonPosted)
+				offset
 			);
 		}
 
@@ -171,7 +166,12 @@ struct MbusNode final : private KernelBusObject {
 				co_return Error::illegalArgs;
 			}
 
-			MemoryViewDescriptor descriptor{regs[index].memory};
+			auto memory = smarter::allocate_shared<HardwareMemory>(*kernelAlloc,
+					regs[index].address & ~(kPageSize - 1),
+					(regs[index].length + (kPageSize - 1)) & ~(kPageSize - 1),
+					CachingMode::mmioNonPosted);
+
+			MemoryViewDescriptor descriptor{memory};
 
 			managarm::hw::SvrResponse<KernelAlloc> resp{*kernelAlloc};
 			resp.set_error(managarm::hw::Errors::SUCCESS);
