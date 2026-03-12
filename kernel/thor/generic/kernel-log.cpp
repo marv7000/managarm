@@ -12,6 +12,8 @@
 namespace thor {
 
 namespace {
+	constexpr int recordsBeforeFlush = 16;
+
 	// ----------------------------------------------------------------------------------
 	// General log ring infrastructure.
 	// ----------------------------------------------------------------------------------
@@ -76,6 +78,19 @@ namespace {
 		});
 	}
 
+	void flushLogHandlers() {
+		for (const auto &it : globalLogList)
+			it->flush();
+	}
+
+	void flushUrgentLogHandlers() {
+		for (const auto &it : globalLogList) {
+			if (!it->takesUrgentLogs)
+				continue;
+			it->flush();
+		}
+	}
+
 	// ----------------------------------------------------------------------------------
 	// Log draining fiber.
 	// ----------------------------------------------------------------------------------
@@ -103,12 +118,29 @@ namespace {
 					return !drainPending.load(std::memory_order_acquire);
 				})
 			);
+
+			int sinceFlush = 0;
 			while(true) {
 				StatelessIrqLock irqLock;
 				auto emitLock = frg::guard(&emitMutex);
 
-				if (emitLogFromRing())
+				if (emitLogFromRing()) {
+					// Flush every few records.
+					// Without this, the screen may not be updated for extended periods of time
+					// while the system is emitting a lot of logs.
+					++sinceFlush;
+					if (sinceFlush >= recordsBeforeFlush) {
+						flushLogHandlers();
+						sinceFlush = 0;
+					}
 					continue;
+				} else {
+					// Flush before we sleep again in the even above.
+					if (sinceFlush) {
+						flushLogHandlers();
+						sinceFlush = 0;
+					}
+				}
 
 				if (drainPending.load(std::memory_order_relaxed)) {
 					// We need acquire ordering to order this because the check in the next iteration.
@@ -157,6 +189,8 @@ void postLogRecord(frg::string_view record, bool expedited) {
 
 	// For expedited logs, we call into log handlers synchronously.
 	if (!useThreaded || expedited) {
+		// We are emitting all remaining events here anyway (without releasing the lock),
+		// so flushing in between records offers little advantages. Simply flush at the end.
 		bool reentrant{emitMutex.owner() == getCpuData()};
 		if (!reentrant) {
 			auto emitLock = frg::guard(&emitMutex);
@@ -165,11 +199,13 @@ void postLogRecord(frg::string_view record, bool expedited) {
 				if (!emitLogFromRing())
 					break;
 			}
+			flushLogHandlers();
 		} else {
 			while (true) {
 				if (!emitUrgentLogFromRing())
 					break;
 			}
+			flushUrgentLogHandlers();
 		}
 	}
 }
