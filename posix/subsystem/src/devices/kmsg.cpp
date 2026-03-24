@@ -79,6 +79,7 @@ private:
 			}
 
 			msg += digits + 2;
+			length -= digits + 2;
 		};
 
 		if(msg && length >= 1 && msg[0] == '<') {
@@ -97,12 +98,9 @@ private:
 			}
 		}
 
-		auto line_len = strlen(msg);
-		auto newline = strchr(msg, '\n');
-		if(newline) {
-			assert(newline >= msg);
-			line_len = frg::min(static_cast<size_t>(newline - msg), line_len);
-		}
+		auto line_len = frg::min(length, strlen(msg));
+		if (line_len && msg[line_len - 1] == '\n')
+			line_len--;
 
 		helLog(s, msg, line_len);
 
