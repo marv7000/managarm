@@ -256,6 +256,7 @@ struct NodeOperations {
 			std::string path);
 
 	async::result<Error> (*chmod)(std::shared_ptr<void> object, int mode);
+	async::result<Error> (*chown)(std::shared_ptr<void> object, std::optional<uid_t>, std::optional<gid_t>);
 
 	async::result<Error> (*utimensat)(std::shared_ptr<void> object,
 		std::optional<timespec> atime, std::optional<timespec> mtime, timespec ctime);

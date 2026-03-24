@@ -119,6 +119,32 @@ struct Node : FsNode {
 		co_return Error::success;
 	}
 
+	async::result<std::expected<void, Error>> chown(std::optional<uid_t> uid, std::optional<gid_t> gid) override {
+		managarm::fs::ChownRequest req;
+		req.set_uid(uid.value_or(~0U));
+		req.set_gid(gid.value_or(~0U));
+
+		auto ser = req.SerializeAsString();
+		auto [offer, send_req, recv_resp] = co_await helix_ng::exchangeMsgs(
+			getLane(),
+			helix_ng::offer(
+				helix_ng::sendBuffer(ser.data(), ser.size()),
+				helix_ng::recvInline()
+			)
+		);
+		HEL_CHECK(offer.error());
+		HEL_CHECK(send_req.error());
+		HEL_CHECK(recv_resp.error());
+
+		managarm::fs::ChownResponse resp;
+		resp.ParseFromArray(recv_resp.data(), recv_resp.length());
+		recv_resp.reset();
+		if(resp.error() != managarm::fs::Errors::SUCCESS)
+			co_return std::unexpected{resp.error() | toPosixError};
+
+		co_return {};
+	}
+
 	async::result<Error> utimensat(std::optional<timespec> atime, std::optional<timespec> mtime,
 			timespec ctime) override {
 		managarm::fs::UtimensatRequest req;

@@ -199,6 +199,7 @@ struct Inode final : BaseInode, std::enable_shared_from_this<Inode> {
 	async::result<std::expected<DirEntry, protocols::fs::Error>> mkdir(std::string name);
 	async::result<std::expected<DirEntry, protocols::fs::Error>> symlink(std::string name, std::string target);
 	async::result<protocols::fs::Error> chmod(int mode);
+	async::result<protocols::fs::Error> chown(std::optional<uid_t> uid, std::optional<gid_t> gid);
 	async::result<protocols::fs::Error> updateTimes(
 		std::optional<timespec> atime,
 		std::optional<timespec> mtime,

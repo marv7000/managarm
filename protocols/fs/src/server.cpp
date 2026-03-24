@@ -2126,6 +2126,25 @@ async::detached serveNode(helix::UniqueLane lane, std::shared_ptr<void> node,
 			);
 			HEL_CHECK(send_resp.error());
 			logBragiSerializedReply(ser);
+		}else if(preamble.id() == managarm::fs::ChownRequest::message_id) {
+			auto req = bragi::parse_head_only<managarm::fs::ChownRequest>(recv_req);
+			recv_req.reset();
+			co_await node_ops->chown(
+			    node,
+			    (req->uid() == ~0U) ? std::nullopt : std::optional{req->uid()},
+			    (req->gid() == ~0U) ? std::nullopt : std::optional{req->gid()}
+			);
+
+			managarm::fs::ChownResponse resp;
+			resp.set_error(managarm::fs::Errors::SUCCESS);
+
+			auto ser = resp.SerializeAsString();
+			auto [send_resp] = co_await helix_ng::exchangeMsgs(
+				conversation,
+				helix_ng::sendBuffer(ser.data(), ser.size())
+			);
+			HEL_CHECK(send_resp.error());
+			logBragiSerializedReply(ser);
 		}else if(preamble.id() == managarm::fs::ObstructLinkRequest::message_id) {
 			std::vector<uint8_t> tail(preamble.tail_size());
 			auto [recv_tail] = co_await helix_ng::exchangeMsgs(
