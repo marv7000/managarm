@@ -897,3 +897,14 @@ message NodeOpenResponse 48 {
 head(128):
 	Errors error;
 }
+
+message ChownRequest 49 {
+head(128):
+	uint32 uid;
+	uint32 gid;
+}
+
+message ChownResponse 50 {
+head(128):
+	Errors error;
+}

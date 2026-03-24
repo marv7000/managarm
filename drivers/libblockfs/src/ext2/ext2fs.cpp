@@ -485,6 +485,22 @@ async::result<protocols::fs::Error> Inode::chmod(int mode) {
 	co_return protocols::fs::Error::none;
 }
 
+async::result<protocols::fs::Error> Inode::chown(std::optional<uid_t> uid, std::optional<gid_t> gid) {
+	co_await readyEvent.wait();
+
+	if (uid)
+		diskInode()->uid = *uid;
+	if (gid)
+		diskInode()->gid = *gid;
+
+	auto syncInode = co_await helix_ng::synchronizeSpace(
+			helix::BorrowedDescriptor{kHelNullHandle},
+			diskInode(), fs.inodeSize);
+	HEL_CHECK(syncInode.error());
+
+	co_return protocols::fs::Error::none;
+}
+
 async::result<protocols::fs::Error> Inode::updateTimes(
 		std::optional<timespec> atime,
 		std::optional<timespec> mtime,

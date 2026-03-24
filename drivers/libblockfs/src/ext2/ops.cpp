@@ -213,6 +213,13 @@ async::result<protocols::fs::Error> chmod(std::shared_ptr<void> object, int mode
 	co_return result;
 }
 
+async::result<protocols::fs::Error> chown(std::shared_ptr<void> object, std::optional<uid_t> uid, std::optional<gid_t> gid) {
+	auto self = std::static_pointer_cast<ext2fs::Inode>(object);
+	auto result = co_await self->chown(uid, gid);
+
+	co_return result;
+}
+
 async::result<protocols::fs::TraverseLinksResult> traverseLinks(std::shared_ptr<void> object,
 		std::deque<std::string> components) {
 	auto self = std::static_pointer_cast<ext2fs::Inode>(object);
@@ -367,6 +374,7 @@ constinit protocols::fs::NodeOperations nodeOperations{
 	.mkdir = &mkdir,
 	.symlink = &symlink,
 	.chmod = &chmod,
+	.chown = &chown,
 	.utimensat = &doUtimensat<FileSystem>,
 	.obstructLink = &doObstructLink<FileSystem>,
 	.traverseLinks = &traverseLinks,
