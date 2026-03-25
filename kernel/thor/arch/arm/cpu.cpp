@@ -132,25 +132,6 @@ void doForkExecutor(Executor *executor, void (*functor)(void *), void *context) 
 	forkExecutorRegisters(executor, functor, context);
 }
 
-extern "C" void workStub();
-
-void workOnExecutor(Executor *executor) {
-	auto sp = reinterpret_cast<uint64_t *>(executor->getExceptionStack());
-	auto push = [&] (uint64_t v) {
-		sp -= 2;
-		memcpy(sp, &v, 8);
-	};
-
-	push(executor->general()->sp);
-	push(executor->general()->elr);
-	push(executor->general()->spsr);
-
-	void *stub = reinterpret_cast<void *>(&workStub);
-	executor->general()->elr = reinterpret_cast<uintptr_t>(stub);
-	executor->general()->sp = reinterpret_cast<uintptr_t>(sp);
-	executor->general()->spsr = 0x3c0 | (isKernelInEl2() ? 9 : 5);
-}
-
 void scrubStack(FaultImageAccessor accessor, Continuation cont) {
 	scrubStackFrom(reinterpret_cast<uintptr_t>(accessor.frameBase()), cont);;
 }

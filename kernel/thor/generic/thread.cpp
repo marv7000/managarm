@@ -648,10 +648,6 @@ void Thread::invoke() {
 				<< " " << _credentials[14] << " " << _credentials[15]
 				<< " is activated" << frg::endlog;
 
-	// If there is work to do, return to the WorkQueue and not to user space.
-	if(_runState == kRunSuspended && _mainWorkQueue.check())
-		workOnExecutor(&_executor);
-
 	assert(_runState == kRunSuspended || _runState == kRunDeferred);
 	_updateRunTime();
 	_runState = kRunActive;

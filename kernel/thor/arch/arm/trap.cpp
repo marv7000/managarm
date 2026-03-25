@@ -297,14 +297,4 @@ extern "C" void onPlatformIrq(IrqImageAccessor image) {
 	iplLeaveContext(*image.iplState());
 }
 
-extern "C" void onPlatformWork() {
-	assert(!irqMutex().nesting());
-	// TODO: User-access should already be disabled here.
-	disableUserAccess();
-
-	enableInts();
-	getCurrentThread()->mainWorkQueue()->run();
-	disableInts();
-}
-
 } // namespace thor

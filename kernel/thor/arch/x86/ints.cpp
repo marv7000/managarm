@@ -680,21 +680,6 @@ extern "C" void onPlatformCall(IrqImageAccessor image) {
 	iplLeaveContext(*image.iplState());
 }
 
-extern "C" void onPlatformWork() {
-//	if(inStub(*image.ip()))
-//		panicLogger() << "Work interrupt " << number
-//				<< " in stub section, cs: 0x" << frg::hex_fmt(*image.cs())
-//				<< ", ip: " << (void *)*image.ip() << frg::endlog;
-
-	assert(!irqMutex().nesting());
-
-	// Note that user access is disabled here by workOnExecutor().
-
-	enableInts();
-	getCurrentThread()->mainWorkQueue()->run();
-	disableInts();
-}
-
 namespace {
 	void interruptIseq(IseqContext *iseq, NmiImageAccessor image) {
 		if (!(iseq->state & IseqContext::STATE_TX)) [[likely]]

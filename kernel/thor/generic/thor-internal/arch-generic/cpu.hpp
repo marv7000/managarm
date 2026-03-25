@@ -91,11 +91,10 @@ concept ValidExecutor = requires(T *ex,
 	{ ex->arg1() } -> std::same_as<Word *>;
 	{ ex->result0() } -> std::same_as<Word *>;
 	{ ex->result1() } -> std::same_as<Word *>;
-	// Save/restore/work
+	// Save/restore
 	{ saveExecutor(ex, f) } -> std::same_as<void>;
 	{ saveExecutor(ex, i) } -> std::same_as<void>;
 	{ saveExecutor(ex, s) } -> std::same_as<void>;
-	{ workOnExecutor(ex) } -> std::same_as<void>;
 	{ restoreExecutor(ex) } -> std::same_as<void>;
 };
 static_assert(ValidExecutor<Executor>);
@@ -115,10 +114,6 @@ void scrubStack(Executor *executor, Continuation cont);
 void saveExecutor(Executor *executor, FaultImageAccessor accessor);
 void saveExecutor(Executor *executor, IrqImageAccessor accessor);
 void saveExecutor(Executor *executor, SyscallImageAccessor accessor);
-
-// Schedule the executor to run its thread's work queue before resuming.
-void workOnExecutor(Executor *executor);
-
 
 // Validate AssemblyCpuData and PlatformCpuData definitions.
 static_assert(offsetof(AssemblyCpuData, selfPointer) == 0);

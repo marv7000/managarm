@@ -233,7 +233,6 @@ struct Executor {
 	friend void saveExecutor(Executor *executor, FaultImageAccessor accessor);
 	friend void saveExecutor(Executor *executor, IrqImageAccessor accessor);
 	friend void saveExecutor(Executor *executor, SyscallImageAccessor accessor);
-	friend void workOnExecutor(Executor *executor);
 	friend void restoreExecutor(Executor *executor);
 
 	static size_t determineSize() { return sizeof(ExecutorState); }

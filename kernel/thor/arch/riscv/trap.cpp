@@ -425,20 +425,4 @@ void restoreExecutor(Executor *executor) {
 	thorRestoreExecutorRegs(frame);
 }
 
-void handleRiscvWorkOnExecutor(Executor *executor, Frame *frame) {
-	auto *cpuData = getCpuData();
-
-	enableInts();
-	getCurrentThread()->mainWorkQueue()->run();
-	disableInts();
-
-	assert(!cpuData->stashedFs);
-	restoreStaleExtendedState(executor, frame);
-	writeSretCsrs(frame);
-	// TODO: In principle, this is only necessary on CPU migration.
-	if (!frame->umode())
-		frame->tp() = reinterpret_cast<uintptr_t>(cpuData);
-	thorRestoreExecutorRegs(frame);
-}
-
 } // namespace thor

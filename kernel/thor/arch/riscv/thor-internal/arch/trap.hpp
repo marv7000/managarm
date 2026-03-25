@@ -8,8 +8,6 @@ struct IrqPin;
 
 extern "C" void thorExceptionEntry();
 
-void handleRiscvWorkOnExecutor(Executor *executor, Frame *frame);
-
 enum ExternalIrqType {
 	none,
 	plic,

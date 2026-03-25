@@ -237,34 +237,6 @@ void doForkExecutor(Executor *executor, void (*functor)(void *), void *context) 
 	forkExecutorRegisters(executor, functor, context);
 }
 
-extern "C" void workStub();
-
-void workOnExecutor(Executor *executor) {
-	auto nsp = reinterpret_cast<uint64_t *>(executor->getSyscallStack());
-
-	auto push = [&] (uint64_t v) {
-		memcpy(--nsp, &v, sizeof(uint64_t));
-	};
-
-	// Build an IRET frame on the syscall stack.
-	push(*executor->ss());
-	push(*executor->sp());
-	push(*executor->rflags());
-	push(*executor->cs());
-	push(*executor->ip());
-
-	// Point the executor to the work stub.
-	void *stub = reinterpret_cast<void *>(&workStub);
-	*executor->ip() = reinterpret_cast<uintptr_t>(stub);
-	*executor->cs() = kSelExecutorSyscallCode;
-	*executor->rflags() &= ~uint64_t(0x100); // Disable TF.
-	*executor->rflags() &= ~uint64_t(0x200); // Disable IF.
-	*executor->rflags() &= ~uint64_t(0x400); // Disable DF.
-	*executor->rflags() &= ~uint64_t(0x40000); // Disable AC.
-	*executor->sp() = reinterpret_cast<uintptr_t>(nsp);
-	*executor->ss() = 0;
-}
-
 extern "C" [[ noreturn ]] void _restoreExecutorRegisters(void *pointer);
 
 [[ gnu::section(".text.stubs") ]] void restoreExecutor(Executor *executor) {
