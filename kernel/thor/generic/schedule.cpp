@@ -50,6 +50,19 @@ namespace {
 				scheduler->renewSchedule();
 			}
 		}
+
+		void handlePreemption() override {
+			StatelessIrqLock irqLock;
+			auto *scheduler = &localScheduler.get();
+			scheduler->update();
+			if(scheduler->maybeReschedule()) {
+				runOnStack([] (Continuation) {
+					localScheduler.get().commitReschedule();
+				}, getCpuData()->detachedStack.base());
+			}else{
+				scheduler->renewSchedule();
+			}
+		}
 	};
 
 	frg::eternal<IdleTask> globalIdleTask;

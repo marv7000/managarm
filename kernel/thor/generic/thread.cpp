@@ -662,6 +662,36 @@ void Thread::invoke() {
 	restoreExecutor(&_executor);
 }
 
+void Thread::handlePreemption() {
+	assert(!intsAreEnabled());
+	assert(getCurrentThread().get() == this);
+
+	auto *scheduler = &localScheduler.get();
+
+	scheduler->update();
+	if(scheduler->maybeReschedule()) {
+		auto lock = frg::guard(&_mutex);
+
+		if(logRunStates)
+			infoLogger() << "thor: " << (void *)this << " is deferred" << frg::endlog;
+
+		assert(_runState == kRunActive);
+		_updateRunTime();
+		_runState = kRunDeferred;
+		_uninvoke();
+
+		forkExecutor([&] {
+			runOnStack([] (Continuation cont, Executor *executor, frg::unique_lock<Mutex> lock) {
+				scrubStack(executor, cont);
+				lock.unlock();
+				localScheduler.get().commitReschedule();
+			}, getCpuData()->detachedStack.base(), &_executor, std::move(lock));
+		}, &_executor);
+	}else{
+		scheduler->renewSchedule();
+	}
+}
+
 void Thread::handlePreemption(IrqImageAccessor image) {
 	doHandlePreemption(image.inManipulableDomain(), image);
 }

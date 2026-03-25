@@ -71,6 +71,13 @@ public:
 
 	[[ noreturn ]] virtual void invoke() = 0;
 
+	// Precondition: Preemption must be safe at the call site.
+	//               In particular, before the caller disables interrupts,
+	//               it should be on a code path with currentIpl() < ipl::schedule.
+	// Precondition: !intsAreEnabled().
+	virtual void handlePreemption() = 0;
+	// Must only be called if the image's IPL < ipl::schedule.
+	// Precondition: !intsAreEnabled().
 	virtual void handlePreemption(IrqImageAccessor image) = 0;
 
 	uint64_t runTime() {
@@ -162,6 +169,12 @@ public:
 		if (deferPreemption(image))
 			return;
 		currentRunnable()->handlePreemption(image);
+	}
+
+	void checkPreemption() {
+		if (!mustCallPreemption())
+			return;
+		currentRunnable()->handlePreemption();
 	}
 
 	void update();
