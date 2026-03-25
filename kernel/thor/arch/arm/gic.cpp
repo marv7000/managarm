@@ -78,9 +78,9 @@ void handleGicIrq(IrqImageAccessor image, ClaimedExternalIrq irq) {
 			              << frg::endlog;
 		}
 
-		localScheduler.get(cpuData).checkPreemption(image);
-
 		if (image.inManipulableDomain()) {
+			localScheduler.get(cpuData).checkPreemption();
+
 			auto thisThread = getCurrentThread();
 			assert(thisThread);
 
@@ -92,6 +92,8 @@ void handleGicIrq(IrqImageAccessor image, ClaimedExternalIrq irq) {
 
 				disableInts();
 			}
+		} else {
+			localScheduler.get(cpuData).checkPreemption(image);
 		}
 	} else if (irq.irq >= 1020) {
 		if constexpr (logSpurious) {
@@ -100,6 +102,12 @@ void handleGicIrq(IrqImageAccessor image, ClaimedExternalIrq irq) {
 		}
 	} else {
 		handleIrq(image, irq.pin);
+
+		if (image.inManipulableDomain()) {
+			localScheduler.get(cpuData).checkPreemption();
+		} else {
+			localScheduler.get(cpuData).checkPreemption(image);
+		}
 	}
 }
 

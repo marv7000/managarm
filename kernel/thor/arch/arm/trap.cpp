@@ -180,7 +180,11 @@ extern "C" void onPlatformSyncFault(FaultImageAccessor image) {
 
 	// This syscall/fault may have woken up threads on this CPU.
 	// See Scheduler::resume() for details.
-	checkThreadPreemption(image);
+	if (!image.inKernelDomain()) {
+		checkThreadPreemption();
+	} else {
+		checkThreadPreemption(image);
+	}
 
 	iplLeaveContext(*image.iplState());
 }

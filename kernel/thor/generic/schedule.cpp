@@ -39,6 +39,7 @@ namespace {
 		}
 
 		void handlePreemption(IrqImageAccessor image) override {
+			assert(!image.inManipulableDomain());
 			auto *scheduler = &localScheduler.get();
 			scheduler->update();
 			if(scheduler->maybeReschedule()) {
@@ -485,6 +486,16 @@ void doCheckThreadPreemption(ImageAccessor image) {
 
 } // namespace
 
+void checkThreadPreemption() {
+	assert(!intsAreEnabled());
+	auto thisThread = getCurrentThread();
+	auto *scheduler = &localScheduler.get();
+
+	scheduler->suppressRenewalUntilInterrupt();
+	if (!scheduler->mustCallPreemption())
+		return;
+	thisThread->handlePreemption();
+}
 void checkThreadPreemption(FaultImageAccessor image) {
 	doCheckThreadPreemption(image);
 }

@@ -386,7 +386,11 @@ extern "C" void onPlatformFault(FaultImageAccessor image, int number) {
 
 	// This fault may have woken up threads on this CPU.
 	// See Scheduler::resume() for details.
-	checkThreadPreemption(image);
+	if (!image.inKernelDomain()) {
+		checkThreadPreemption();
+	} else {
+		checkThreadPreemption(image);
+	}
 
 	iplLeaveContext(*image.iplState());
 }
@@ -407,6 +411,12 @@ extern "C" void onPlatformIrq(IrqImageAccessor image, int number) {
 	disableUserAccess();
 
 	handleIrq(image, globalIrqSlots[number]->pin());
+
+	if (image.inManipulableDomain()) {
+		localScheduler.get().checkPreemption();
+	} else {
+		localScheduler.get().checkPreemption(image);
+	}
 
 	iplLeaveContext(*image.iplState());
 }
@@ -463,7 +473,11 @@ extern "C" void onPlatformPreemption(IrqImageAccessor image) {
 
 	acknowledgeIrq(0);
 
-	localScheduler.get().checkPreemption(image);
+	if (image.inManipulableDomain()) {
+		localScheduler.get().checkPreemption();
+	} else {
+		localScheduler.get().checkPreemption(image);
+	}
 
 	iplLeaveContext(*image.iplState());
 }
@@ -484,7 +498,7 @@ extern "C" void onPlatformSyscall(SyscallImageAccessor image) {
 
 	// This syscall may have woken up threads on this CPU.
 	// See Scheduler::resume() for details.
-	checkThreadPreemption(image);
+	checkThreadPreemption();
 
 	iplLower(ipl::interrupt, ipl::passive);
 }
@@ -511,7 +525,11 @@ extern "C" void onPlatformShootdown(IrqImageAccessor image) {
 
 	acknowledgeIpi();
 
-	localScheduler.get().checkPreemption(image);
+	if (image.inManipulableDomain()) {
+		localScheduler.get().checkPreemption();
+	} else {
+		localScheduler.get().checkPreemption(image);
+	}
 
 	iplLeaveContext(*image.iplState());
 }
@@ -535,9 +553,10 @@ extern "C" void onPlatformPing(IrqImageAccessor image) {
 
 	auto *scheduler = &localScheduler.get();
 	scheduler->forcePreemptionCall();
-	scheduler->checkPreemption(image);
 
 	if (image.inManipulableDomain()) {
+		scheduler->checkPreemption();
+
 		auto thisThread = getCurrentThread();
 		assert(thisThread);
 
@@ -549,6 +568,8 @@ extern "C" void onPlatformPing(IrqImageAccessor image) {
 
 			disableInts();
 		}
+	} else {
+		scheduler->checkPreemption(image);
 	}
 
 	iplLeaveContext(*image.iplState());
@@ -573,7 +594,11 @@ extern "C" void onPlatformCall(IrqImageAccessor image) {
 
 	SelfIntCallBase::runScheduledCalls();
 
-	localScheduler.get().checkPreemption(image);
+	if (image.inManipulableDomain()) {
+		localScheduler.get().checkPreemption();
+	} else {
+		localScheduler.get().checkPreemption(image);
+	}
 
 	iplLeaveContext(*image.iplState());
 }

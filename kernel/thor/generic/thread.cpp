@@ -696,7 +696,8 @@ void Thread::handlePreemption(IrqImageAccessor image) {
 	doHandlePreemption(image.inManipulableDomain(), image);
 }
 void Thread::handlePreemption(FaultImageAccessor image) {
-	doHandlePreemption(!image.inKernelDomain(), image);
+	assert(image.inKernelDomain());
+	doHandlePreemption(false, image);
 }
 void Thread::handlePreemption(SyscallImageAccessor image) {
 	doHandlePreemption(true, image);

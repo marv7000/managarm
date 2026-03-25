@@ -126,9 +126,9 @@ void handleRiscvIpi(Frame *frame) {
 	if (mask & PlatformCpuData::ipiSelfCall)
 		SelfIntCallBase::runScheduledCalls();
 
-	localScheduler.get(cpuData).checkPreemption(image);
-
 	if (image.inManipulableDomain()) {
+		localScheduler.get(cpuData).checkPreemption();
+
 		auto thisThread = getCurrentThread();
 		assert(thisThread);
 
@@ -140,6 +140,8 @@ void handleRiscvIpi(Frame *frame) {
 
 			disableInts();
 		}
+	} else {
+		localScheduler.get(cpuData).checkPreemption(image);
 	}
 }
 
@@ -187,7 +189,12 @@ void handleRiscvInterrupt(Frame *frame, uint64_t code) {
 		handleRiscvIpi(frame);
 	} else if (code == riscv::interrupts::sti) {
 		handleTimerInterrupt();
-		localScheduler.get().checkPreemption(IrqImageAccessor{frame});
+		IrqImageAccessor image{frame};
+		if (image.inManipulableDomain()) {
+			localScheduler.get().checkPreemption();
+		} else {
+			localScheduler.get().checkPreemption(image);
+		}
 	} else if (code == riscv::interrupts::sei) {
 		auto *ourExternalIrq = &riscvExternalIrq.get();
 
@@ -204,7 +211,13 @@ void handleRiscvInterrupt(Frame *frame, uint64_t code) {
 		}
 
 		if (irq) {
-			handleIrq(IrqImageAccessor{frame}, irq);
+			IrqImageAccessor image{frame};
+			handleIrq(image, irq);
+			if (image.inManipulableDomain()) {
+				localScheduler.get().checkPreemption();
+			} else {
+				localScheduler.get().checkPreemption(image);
+			}
 		} else {
 			infoLogger() << "Spurious external interrupt" << frg::endlog;
 		}
@@ -299,7 +312,11 @@ void handleRiscvException(Frame *frame, uint64_t code) {
 
 	// This syscall/fault may have woken up threads on this CPU.
 	// See Scheduler::resume() for details.
-	checkThreadPreemption(FaultImageAccessor{frame});
+	if (frame->umode()) {
+		checkThreadPreemption();
+	} else {
+		checkThreadPreemption(FaultImageAccessor{frame});
+	}
 
 	iplLeaveContext(frame->iplState);
 }

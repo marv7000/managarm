@@ -250,6 +250,7 @@ private:
 };
 
 // Similar to Scheduler::checkPreemption() but specialized for threads.
+void checkThreadPreemption();
 void checkThreadPreemption(FaultImageAccessor image);
 void checkThreadPreemption(SyscallImageAccessor image);
 
