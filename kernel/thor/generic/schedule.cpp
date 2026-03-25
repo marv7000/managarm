@@ -499,9 +499,6 @@ void checkThreadPreemption() {
 void checkThreadPreemption(FaultImageAccessor image) {
 	doCheckThreadPreemption(image);
 }
-void checkThreadPreemption(SyscallImageAccessor image) {
-	doCheckThreadPreemption(image);
-}
 
 THOR_DEFINE_PERCPU(localScheduler);
 

@@ -699,9 +699,6 @@ void Thread::handlePreemption(FaultImageAccessor image) {
 	assert(image.inKernelDomain());
 	doHandlePreemption(false, image);
 }
-void Thread::handlePreemption(SyscallImageAccessor image) {
-	doHandlePreemption(true, image);
-}
 
 template<typename ImageAccessor>
 void Thread::doHandlePreemption(bool inManipulableDomain, ImageAccessor image) {
