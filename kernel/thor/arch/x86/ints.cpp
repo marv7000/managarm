@@ -3,6 +3,7 @@
 #include <thor-internal/ipl.hpp>
 #include <thor-internal/profile.hpp>
 #include <thor-internal/thread.hpp>
+#include <thor-internal/traps.hpp>
 #include <thor-internal/arch-generic/cpu.hpp>
 #include <thor-internal/arch/pmc-amd.hpp>
 #include <thor-internal/arch/pmc-intel.hpp>
@@ -387,7 +388,19 @@ extern "C" void onPlatformFault(FaultImageAccessor image, int number) {
 	// This fault may have woken up threads on this CPU.
 	// See Scheduler::resume() for details.
 	if (!image.inKernelDomain()) {
+		auto thisThread = getCurrentThread();
+		assert(thisThread);
+
 		checkThreadPreemption();
+
+		if (thisThread->checkConditions()) {
+			iplDemoteContext(ipl::passive);
+			enableInts();
+
+			StatelessIrqLock irqLock(frg::dont_lock);
+			handleThreadReturnToUserMode(image, irqLock);
+			irqLock.release();
+		}
 	} else {
 		checkThreadPreemption(image);
 	}
@@ -413,7 +426,19 @@ extern "C" void onPlatformIrq(IrqImageAccessor image, int number) {
 	handleIrq(image, globalIrqSlots[number]->pin());
 
 	if (image.inManipulableDomain()) {
+		auto thisThread = getCurrentThread();
+		assert(thisThread);
+
 		localScheduler.get().checkPreemption();
+
+		if (thisThread->checkConditions()) {
+			iplDemoteContext(ipl::passive);
+			enableInts();
+
+			StatelessIrqLock irqLock(frg::dont_lock);
+			handleThreadReturnToUserMode(image, irqLock);
+			irqLock.release();
+		}
 	} else {
 		localScheduler.get().checkPreemption(image);
 	}
@@ -474,7 +499,19 @@ extern "C" void onPlatformPreemption(IrqImageAccessor image) {
 	acknowledgeIrq(0);
 
 	if (image.inManipulableDomain()) {
+		auto thisThread = getCurrentThread();
+		assert(thisThread);
+
 		localScheduler.get().checkPreemption();
+
+		if (thisThread->checkConditions()) {
+			iplDemoteContext(ipl::passive);
+			enableInts();
+
+			StatelessIrqLock irqLock(frg::dont_lock);
+			handleThreadReturnToUserMode(image, irqLock);
+			irqLock.release();
+		}
 	} else {
 		localScheduler.get().checkPreemption(image);
 	}
@@ -498,7 +535,21 @@ extern "C" void onPlatformSyscall(SyscallImageAccessor image) {
 
 	// This syscall may have woken up threads on this CPU.
 	// See Scheduler::resume() for details.
-	checkThreadPreemption();
+	{
+		auto thisThread = getCurrentThread();
+		assert(thisThread);
+
+		checkThreadPreemption();
+
+		if (thisThread->checkConditions()) {
+			iplDemoteContext(ipl::passive);
+			enableInts();
+
+			StatelessIrqLock irqLock(frg::dont_lock);
+			handleThreadReturnToUserMode(image, irqLock);
+			irqLock.release();
+		}
+	}
 
 	iplLower(ipl::interrupt, ipl::passive);
 }
@@ -526,7 +577,19 @@ extern "C" void onPlatformShootdown(IrqImageAccessor image) {
 	acknowledgeIpi();
 
 	if (image.inManipulableDomain()) {
+		auto thisThread = getCurrentThread();
+		assert(thisThread);
+
 		localScheduler.get().checkPreemption();
+
+		if (thisThread->checkConditions()) {
+			iplDemoteContext(ipl::passive);
+			enableInts();
+
+			StatelessIrqLock irqLock(frg::dont_lock);
+			handleThreadReturnToUserMode(image, irqLock);
+			irqLock.release();
+		}
 	} else {
 		localScheduler.get().checkPreemption(image);
 	}
@@ -560,13 +623,15 @@ extern "C" void onPlatformPing(IrqImageAccessor image) {
 		auto thisThread = getCurrentThread();
 		assert(thisThread);
 
+		scheduler->checkPreemption();
+
 		if (thisThread->checkConditions()) {
 			iplDemoteContext(ipl::passive);
 			enableInts();
 
-			Thread::handleConditions(image);
-
-			disableInts();
+			StatelessIrqLock irqLock(frg::dont_lock);
+			handleThreadReturnToUserMode(image, irqLock);
+			irqLock.release();
 		}
 	} else {
 		scheduler->checkPreemption(image);
@@ -595,7 +660,19 @@ extern "C" void onPlatformCall(IrqImageAccessor image) {
 	SelfIntCallBase::runScheduledCalls();
 
 	if (image.inManipulableDomain()) {
+		auto thisThread = getCurrentThread();
+		assert(thisThread);
+
 		localScheduler.get().checkPreemption();
+
+		if (thisThread->checkConditions()) {
+			iplDemoteContext(ipl::passive);
+			enableInts();
+
+			StatelessIrqLock irqLock(frg::dont_lock);
+			handleThreadReturnToUserMode(image, irqLock);
+			irqLock.release();
+		}
 	} else {
 		localScheduler.get().checkPreemption(image);
 	}

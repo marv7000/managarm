@@ -4,6 +4,7 @@
 #include <thor-internal/arch/trap.hpp>
 #include <thor-internal/int-call.hpp>
 #include <thor-internal/thread.hpp>
+#include <thor-internal/traps.hpp>
 
 namespace thor {
 
@@ -127,18 +128,18 @@ void handleRiscvIpi(Frame *frame) {
 		SelfIntCallBase::runScheduledCalls();
 
 	if (image.inManipulableDomain()) {
-		localScheduler.get(cpuData).checkPreemption();
-
 		auto thisThread = getCurrentThread();
 		assert(thisThread);
+
+		localScheduler.get(cpuData).checkPreemption();
 
 		if (thisThread->checkConditions()) {
 			iplDemoteContext(ipl::passive);
 			enableInts();
 
-			Thread::handleConditions(image);
-
-			disableInts();
+			StatelessIrqLock irqLock(frg::dont_lock);
+			handleThreadReturnToUserMode(image, irqLock);
+			irqLock.release();
 		}
 	} else {
 		localScheduler.get(cpuData).checkPreemption(image);
@@ -191,7 +192,19 @@ void handleRiscvInterrupt(Frame *frame, uint64_t code) {
 		handleTimerInterrupt();
 		IrqImageAccessor image{frame};
 		if (image.inManipulableDomain()) {
+			auto thisThread = getCurrentThread();
+			assert(thisThread);
+
 			localScheduler.get().checkPreemption();
+
+			if (thisThread->checkConditions()) {
+				iplDemoteContext(ipl::passive);
+				enableInts();
+
+				StatelessIrqLock irqLock(frg::dont_lock);
+				handleThreadReturnToUserMode(image, irqLock);
+				irqLock.release();
+			}
 		} else {
 			localScheduler.get().checkPreemption(image);
 		}
@@ -214,7 +227,19 @@ void handleRiscvInterrupt(Frame *frame, uint64_t code) {
 			IrqImageAccessor image{frame};
 			handleIrq(image, irq);
 			if (image.inManipulableDomain()) {
+				auto thisThread = getCurrentThread();
+				assert(thisThread);
+
 				localScheduler.get().checkPreemption();
+
+				if (thisThread->checkConditions()) {
+					iplDemoteContext(ipl::passive);
+					enableInts();
+
+					StatelessIrqLock irqLock(frg::dont_lock);
+					handleThreadReturnToUserMode(image, irqLock);
+					irqLock.release();
+				}
 			} else {
 				localScheduler.get().checkPreemption(image);
 			}
@@ -313,7 +338,20 @@ void handleRiscvException(Frame *frame, uint64_t code) {
 	// This syscall/fault may have woken up threads on this CPU.
 	// See Scheduler::resume() for details.
 	if (frame->umode()) {
+		auto thisThread = getCurrentThread();
+		assert(thisThread);
+
 		checkThreadPreemption();
+
+		if (thisThread->checkConditions()) {
+			FaultImageAccessor image{frame};
+			iplDemoteContext(ipl::passive);
+			enableInts();
+
+			StatelessIrqLock irqLock(frg::dont_lock);
+			handleThreadReturnToUserMode(image, irqLock);
+			irqLock.release();
+		}
 	} else {
 		checkThreadPreemption(FaultImageAccessor{frame});
 	}

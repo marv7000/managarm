@@ -266,6 +266,7 @@ public:
 	static void interruptCurrent(Interrupt interrupt, IrqImageAccessor image, InterruptInfo info);
 
 	static void handleConditions(SyscallImageAccessor image);
+	static void handleConditions(FaultImageAccessor image);
 	static void handleConditions(IrqImageAccessor image);
 	static void raiseSignals(SyscallImageAccessor image);
 

@@ -424,6 +424,10 @@ void Thread::handleConditions(SyscallImageAccessor image) {
 	genericHandleConditions(image);
 }
 
+void Thread::handleConditions(FaultImageAccessor image) {
+	genericHandleConditions(image);
+}
+
 void Thread::handleConditions(IrqImageAccessor image) {
 	genericHandleConditions(image);
 }

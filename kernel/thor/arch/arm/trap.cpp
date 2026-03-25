@@ -10,6 +10,7 @@
 #include <thor-internal/debug.hpp>
 #include <thor-internal/main.hpp>
 #include <thor-internal/thread.hpp>
+#include <thor-internal/traps.hpp>
 
 namespace thor {
 
@@ -181,7 +182,19 @@ extern "C" void onPlatformSyncFault(FaultImageAccessor image) {
 	// This syscall/fault may have woken up threads on this CPU.
 	// See Scheduler::resume() for details.
 	if (!image.inKernelDomain()) {
+		auto thisThread = getCurrentThread();
+		assert(thisThread);
+
 		checkThreadPreemption();
+
+		if (thisThread->checkConditions()) {
+			iplDemoteContext(ipl::passive);
+			enableInts();
+
+			StatelessIrqLock irqLock(frg::dont_lock);
+			handleThreadReturnToUserMode(image, irqLock);
+			irqLock.release();
+		}
 	} else {
 		checkThreadPreemption(image);
 	}
