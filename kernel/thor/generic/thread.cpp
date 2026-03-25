@@ -191,7 +191,7 @@ void Thread::suspendCurrent(IrqImageAccessor image) {
 
 	assert(this_thread->_runState == kRunActive);
 	this_thread->_updateRunTime();
-	this_thread->_runState = kRunSuspended;
+	this_thread->_runState = kRunDeferred;
 	saveExecutor(&this_thread->_executor, image);
 	localScheduler.get().update();
 	localScheduler.get().forceReschedule();
@@ -449,7 +449,7 @@ void Thread::raiseSignals(SyscallImageAccessor image) {
 					<< " is moved to CPU " << assignedCpu->cpuIndex << frg::endlog;
 
 		this_thread->_updateRunTime();
-		this_thread->_runState = kRunSuspended;
+		this_thread->_runState = kRunDeferred;
 		saveExecutor(&this_thread->_executor, image);
 		localScheduler.get().update();
 		Scheduler::suspendCurrent();
@@ -648,7 +648,7 @@ void Thread::invoke() {
 				<< " " << _credentials[14] << " " << _credentials[15]
 				<< " is activated" << frg::endlog;
 
-	assert(_runState == kRunSuspended || _runState == kRunDeferred);
+	assert(_runState == kRunDeferred);
 	_updateRunTime();
 	_runState = kRunActive;
 	activeCpu_ = cpuData;
@@ -693,15 +693,16 @@ void Thread::handlePreemption() {
 }
 
 void Thread::handlePreemption(IrqImageAccessor image) {
-	doHandlePreemption(image.inManipulableDomain(), image);
+	assert(!image.inManipulableDomain());
+	genericHandlePreemption(image);
 }
 void Thread::handlePreemption(FaultImageAccessor image) {
 	assert(image.inKernelDomain());
-	doHandlePreemption(false, image);
+	genericHandlePreemption(image);
 }
 
 template<typename ImageAccessor>
-void Thread::doHandlePreemption(bool inManipulableDomain, ImageAccessor image) {
+void Thread::genericHandlePreemption(ImageAccessor image) {
 	assert(!intsAreEnabled());
 	assert(getCurrentThread().get() == this);
 	assert(image.iplState()->current < ipl::schedule);
@@ -717,11 +718,7 @@ void Thread::doHandlePreemption(bool inManipulableDomain, ImageAccessor image) {
 
 		assert(_runState == kRunActive);
 		_updateRunTime();
-		if(inManipulableDomain) {
-			_runState = kRunSuspended;
-		}else{
-			_runState = kRunDeferred;
-		}
+		_runState = kRunDeferred;
 		saveExecutor(&_executor, image);
 		_uninvoke();
 
@@ -739,7 +736,7 @@ void Thread::_updateRunTime() {
 	auto now = getClockNanos();
 	assert(now >= _lastRunTimeUpdate);
 	auto elapsed = now - _lastRunTimeUpdate;
-	if (_runState == kRunActive || _runState == kRunSuspended || _runState == kRunDeferred) {
+	if (_runState == kRunActive || _runState == kRunDeferred) {
 		_loadRunnable += elapsed;
 	} else {
 		// TODO: Terminated counts as not runnable; we may want to revisit this.

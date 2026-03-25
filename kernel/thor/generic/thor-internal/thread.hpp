@@ -381,7 +381,7 @@ private:
 	static void genericHandleConditions(ImageAccessor image);
 
 	template<typename ImageAccessor>
-	void doHandlePreemption(bool inManipulableDomain, ImageAccessor image);
+	void genericHandlePreemption(ImageAccessor image);
 
 	void raiseCondition_(Condition c);
 
@@ -405,10 +405,6 @@ private:
 		kRunActive,
 
 		// the thread is in the schedule queue but not active on any processor.
-		// it may be killed in this state.
-		kRunSuspended,
-
-		// like kRunSuspended but the thread must not be killed in this state.
 		kRunDeferred,
 
 		// the thread is waiting for progress inside the kernel.
