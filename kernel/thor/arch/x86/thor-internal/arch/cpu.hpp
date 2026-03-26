@@ -33,12 +33,12 @@ enum {
 	// We put it into the second GDT entry so that it is properly aligned.
 	kGdtIndexTask = 2,
 	// The order of the following segments is dictated by syscall/sysret.
-	kGdtIndexExecutorSyscallCode = 4,
-	kGdtIndexExecutorKernelData = 5,
+	kGdtIndexKernelCode = 4,
+	kGdtIndexKernelData = 5,
 	// The order of the following segments is dictated by syscall/sysret.
-	kGdtIndexClientUserCompat = 6,
-	kGdtIndexClientUserData = 7,
-	kGdtIndexClientUserCode = 8,
+	kGdtIndexUserCompat = 6,
+	kGdtIndexUserData = 7,
+	kGdtIndexUserCode = 8,
 };
 
 constexpr uint16_t selectorFor(uint16_t segment, uint16_t rpl) {
@@ -48,11 +48,11 @@ constexpr uint16_t selectorFor(uint16_t segment, uint16_t rpl) {
 enum {
 	kSelTask = selectorFor(kGdtIndexTask, 0),
 
-	kSelExecutorSyscallCode = selectorFor(kGdtIndexExecutorSyscallCode, 0),
-	kSelExecutorKernelData = selectorFor(kGdtIndexExecutorKernelData, 0),
-	kSelClientUserCompat = selectorFor(kGdtIndexClientUserCompat, 3),
-	kSelClientUserData = selectorFor(kGdtIndexClientUserData, 3),
-	kSelClientUserCode = selectorFor(kGdtIndexClientUserCode, 3),
+	kSelKernelCode = selectorFor(kGdtIndexKernelCode, 0),
+	kSelKernelData = selectorFor(kGdtIndexKernelData, 0),
+	kSelUserCompat = selectorFor(kGdtIndexUserCompat, 3),
+	kSelUserData = selectorFor(kGdtIndexUserData, 3),
+	kSelUserCode = selectorFor(kGdtIndexUserCode, 3),
 };
 
 struct CpuDescriptorTables {
@@ -87,12 +87,12 @@ struct FaultImageAccessor {
 
 	IplState *iplState() { return &_frame()->iplState; }
 
-	bool inKernelDomain() {
-		if(*cs() == kSelExecutorSyscallCode) {
+	bool inUserMode() {
+		if(*cs() == kSelUserCompat
+				|| *cs() == kSelUserCode) {
 			return true;
 		}else{
-			assert(*cs() == kSelClientUserCompat
-					|| *cs() == kSelClientUserCode);
+			assert(*cs() == kSelKernelCode);
 			return false;
 		}
 	}
@@ -150,36 +150,17 @@ struct IrqImageAccessor {
 
 	IplState *iplState() { return &_frame()->iplState; }
 
-	bool inPreemptibleDomain() {
-		assert(*cs() == kSelExecutorSyscallCode
-				|| *cs() == kSelClientUserCompat
-				|| *cs() == kSelClientUserCode);
-		return true;
+	bool intsEnabled() {
+		return *rflags() & 0x200;
 	}
 
-	bool inThreadDomain() {
-		assert(inPreemptibleDomain());
-		return true;
-	}
-
-	bool inManipulableDomain() {
-		assert(inThreadDomain());
-		if(*cs() == kSelClientUserCompat
-				|| *cs() == kSelClientUserCode) {
+	bool inUserMode() {
+		if(*cs() == kSelUserCompat
+				|| *cs() == kSelUserCode) {
 			return true;
 		}else{
 			return false;
 		}
-	}
-
-	bool inFiberDomain() {
-		assert(inPreemptibleDomain());
-		return false;
-	}
-
-	bool inIdleDomain() {
-		assert(inPreemptibleDomain());
-		return false;
 	}
 
 	void *frameBase() { return _pointer + sizeof(Frame); }

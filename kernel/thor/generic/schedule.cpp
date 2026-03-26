@@ -39,7 +39,7 @@ namespace {
 		}
 
 		void handlePreemption(IrqImageAccessor image) override {
-			assert(!image.inManipulableDomain());
+			assert(!image.inUserMode());
 			auto *scheduler = &localScheduler.get();
 			scheduler->update();
 			if(scheduler->maybeReschedule()) {

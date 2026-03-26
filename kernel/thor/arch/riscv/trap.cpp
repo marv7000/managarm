@@ -127,7 +127,7 @@ void handleRiscvIpi(Frame *frame) {
 	if (mask & PlatformCpuData::ipiSelfCall)
 		SelfIntCallBase::runScheduledCalls();
 
-	if (image.inManipulableDomain()) {
+	if (image.inUserMode()) {
 		auto thisThread = getCurrentThread();
 		assert(thisThread);
 
@@ -191,7 +191,7 @@ void handleRiscvInterrupt(Frame *frame, uint64_t code) {
 	} else if (code == riscv::interrupts::sti) {
 		handleTimerInterrupt();
 		IrqImageAccessor image{frame};
-		if (image.inManipulableDomain()) {
+		if (image.inUserMode()) {
 			auto thisThread = getCurrentThread();
 			assert(thisThread);
 
@@ -226,7 +226,7 @@ void handleRiscvInterrupt(Frame *frame, uint64_t code) {
 		if (irq) {
 			IrqImageAccessor image{frame};
 			handleIrq(image, irq);
-			if (image.inManipulableDomain()) {
+			if (image.inUserMode()) {
 				auto thisThread = getCurrentThread();
 				assert(thisThread);
 

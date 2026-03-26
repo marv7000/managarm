@@ -79,7 +79,7 @@ void handleGicIrq(IrqImageAccessor image, ClaimedExternalIrq irq) {
 			              << frg::endlog;
 		}
 
-		if (image.inManipulableDomain()) {
+		if (image.inUserMode()) {
 			auto thisThread = getCurrentThread();
 			assert(thisThread);
 
@@ -104,7 +104,7 @@ void handleGicIrq(IrqImageAccessor image, ClaimedExternalIrq irq) {
 	} else {
 		handleIrq(image, irq.pin);
 
-		if (image.inManipulableDomain()) {
+		if (image.inUserMode()) {
 			auto thisThread = getCurrentThread();
 			assert(thisThread);
 

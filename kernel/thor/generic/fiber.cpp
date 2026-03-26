@@ -132,7 +132,6 @@ void KernelFiber::handlePreemption() {
 void KernelFiber::handlePreemption(IrqImageAccessor image) {
 	assert(!intsAreEnabled());
 	assert(thisFiber() == this);
-	assert(!image.inManipulableDomain());
 
 	auto *scheduler = &localScheduler.get();
 

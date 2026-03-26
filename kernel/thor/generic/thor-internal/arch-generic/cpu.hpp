@@ -20,7 +20,7 @@ concept ValidFaultImageAccessor = requires(T acc) {
 	{ acc.ip() } -> std::same_as<Word *>;
 	{ acc.sp() } -> std::same_as<Word *>;
 
-	{ acc.inKernelDomain() } -> std::same_as<bool>;
+	{ acc.inUserMode() } -> std::same_as<bool>;
 	{ acc.allowUserPages() } -> std::same_as<bool>;
 };
 static_assert(ValidFaultImageAccessor<FaultImageAccessor>);
@@ -29,11 +29,8 @@ static_assert(ValidFaultImageAccessor<FaultImageAccessor>);
 // Make sure that IrqImageAccessor provides all the generic methods.
 template <typename T>
 concept ValidIrqImageAccessor = requires(T acc) {
-	{ acc.inPreemptibleDomain() } -> std::same_as<bool>;
-	{ acc.inThreadDomain() } -> std::same_as<bool>;
-	{ acc.inManipulableDomain() } -> std::same_as<bool>;
-	{ acc.inFiberDomain() } -> std::same_as<bool>;
-	{ acc.inIdleDomain() } -> std::same_as<bool>;
+	{ acc.intsEnabled() } -> std::same_as<bool>;
+	{ acc.inUserMode() } -> std::same_as<bool>;
 };
 static_assert(ValidIrqImageAccessor<IrqImageAccessor>);
 

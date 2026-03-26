@@ -31,7 +31,7 @@ namespace {
 // --------------------------------------------------------
 
 bool FaultImageAccessor::allowUserPages() {
-	assert(inKernelDomain());
+	assert(!inUserMode());
 	if(!getCpuData()->haveSmap)
 		return true;
 	return *rflags() & (uint32_t(1) << 18);
@@ -90,7 +90,7 @@ Executor::Executor(UserContext *context, void (*launch)())
 	general()->rip = reinterpret_cast<uintptr_t>(launch);
 	general()->rflags = 0x200;
 	general()->rsp = reinterpret_cast<uintptr_t>(_syscallStack);
-	general()->cs = kSelExecutorSyscallCode;
+	general()->cs = kSelKernelCode;
 	general()->ss = 0;
 }
 
@@ -99,8 +99,8 @@ Executor::Executor(UserContext *context, AbiParameters abi)
 	general()->rip = abi.ip;
 	general()->rflags = 0x200;
 	general()->rsp = abi.sp;
-	general()->cs = kSelClientUserCode;
-	general()->ss = kSelClientUserData;
+	general()->cs = kSelUserCode;
+	general()->ss = kSelUserData;
 }
 
 Executor::Executor(FiberContext *context, AbiParameters abi)
@@ -119,8 +119,8 @@ Executor::Executor(FiberContext *context, AbiParameters abi)
 	general()->rflags = 0x200;
 	general()->rsp = (uintptr_t)context->stack.basePtr();
 	general()->rdi = abi.argument;
-	general()->cs = kSelExecutorSyscallCode;
-	general()->ss = kSelExecutorKernelData;
+	general()->cs = kSelKernelCode;
+	general()->ss = kSelKernelData;
 }
 
 Executor::~Executor() {
@@ -214,10 +214,10 @@ void saveExecutor(Executor *executor, SyscallImageAccessor accessor) {
 	// Note that we do not save cs and ss on syscall.
 	// We just assume that these registers have their usual values.
 	executor->general()->rip = accessor._frame()->rip;
-	executor->general()->cs = kSelClientUserCode;
+	executor->general()->cs = kSelUserCode;
 	executor->general()->rflags = accessor._frame()->rflags;
 	executor->general()->rsp = accessor._frame()->rsp;
-	executor->general()->ss = kSelClientUserData;
+	executor->general()->ss = kSelUserData;
 	executor->general()->clientFs = common::x86::rdmsr(common::x86::kMsrIndexFsBase);
 	executor->general()->clientGs = common::x86::rdmsr(common::x86::kMsrIndexKernelGsBase);
 	executor->general()->iplState = accessor._frame()->iplState;
@@ -262,8 +262,8 @@ extern "C" [[ noreturn ]] void _restoreExecutorRegisters(void *pointer);
 	iplLeaveContext(executor->general()->iplState);
 
 	uint16_t cs = executor->general()->cs;
-	assert(cs == kSelExecutorSyscallCode || cs == kSelClientUserCode);
-	if(cs == kSelClientUserCode)
+	assert(cs == kSelKernelCode || cs == kSelUserCode);
+	if(cs == kSelUserCode)
 		asm volatile ( "swapgs" : : : "memory" );
 
 	_restoreExecutorRegisters(executor->general());
@@ -344,11 +344,11 @@ CpuDescriptorTables::CpuDescriptorTables() {
 	common::x86::makeGdtNullSegment(gdt, kGdtIndexNull);
 	common::x86::makeGdtNullSegment(gdt, kGdtIndexPadding);
 	common::x86::makeGdtTss64Descriptor(gdt, kGdtIndexTask, nullptr, 0);
-	common::x86::makeGdtCode64SystemSegment(gdt, kGdtIndexExecutorSyscallCode);
-	common::x86::makeGdtFlatData32SystemSegment(gdt, kGdtIndexExecutorKernelData);
-	common::x86::makeGdtNullSegment(gdt, kGdtIndexClientUserCompat);
-	common::x86::makeGdtFlatData32UserSegment(gdt, kGdtIndexClientUserData);
-	common::x86::makeGdtCode64UserSegment(gdt, kGdtIndexClientUserCode);
+	common::x86::makeGdtCode64SystemSegment(gdt, kGdtIndexKernelCode);
+	common::x86::makeGdtFlatData32SystemSegment(gdt, kGdtIndexKernelData);
+	common::x86::makeGdtNullSegment(gdt, kGdtIndexUserCompat);
+	common::x86::makeGdtFlatData32UserSegment(gdt, kGdtIndexUserData);
+	common::x86::makeGdtCode64UserSegment(gdt, kGdtIndexUserCode);
 
 	// Setup the per-CPU TSS. This TSS is used by system code.
 	memset(&tss, 0, sizeof(common::x86::Tss64));
@@ -578,7 +578,7 @@ void initializeThisProcessor() {
 	asm volatile ( "pushq %0\n"
 			"\rpushq $.L_reloadCs\n"
 			"\rlretq\n"
-			".L_reloadCs:" : : "i" (kSelExecutorSyscallCode) );
+			".L_reloadCs:" : : "i" (kSelKernelCode) );
 
 	// We need a valid TSS in case an NMI or fault happens here.
 	activateTss(tss);
@@ -715,8 +715,8 @@ void initializeThisProcessor() {
 
 	common::x86::wrmsr(common::x86::kMsrLstar, (uintptr_t)&syscallStub);
 	// Set user mode rpl bits to work around a qemu bug.
-	common::x86::wrmsr(common::x86::kMsrStar, (uint64_t(kSelClientUserCompat) << 48)
-			| (uint64_t(kSelExecutorSyscallCode) << 32));
+	common::x86::wrmsr(common::x86::kMsrStar, (uint64_t(kSelUserCompat) << 48)
+			| (uint64_t(kSelKernelCode) << 32));
 	// Mask interrupt and trap flag.
 	common::x86::wrmsr(
 		common::x86::kMsrFmask,

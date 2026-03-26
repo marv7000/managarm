@@ -439,7 +439,7 @@ void handlePageFault(FaultImageAccessor image, uintptr_t address, Word errorCode
 		logFault();
 
 	// Panic on SMAP violations.
-	if(image.inKernelDomain()) {
+	if(!image.inUserMode()) {
 		assert(!(errorCode & kPfUser));
 
 		if(!image.allowUserPages()) {
@@ -476,7 +476,7 @@ void handlePageFault(FaultImageAccessor image, uintptr_t address, Word errorCode
 
 	// Let the UAR error out if it is active.
 	// Otherwise, panic on page faults in the kernel.
-	if(image.inKernelDomain()) {
+	if(!image.inUserMode()) {
 		if(handleUserAccessFault(address, errorCode & kPfWrite, image))
 			return;
 

@@ -163,7 +163,7 @@ public:
 	void suppressRenewalUntilInterrupt();
 
 	void checkPreemption(IrqImageAccessor image) {
-		assert(image.inPreemptibleDomain());
+		assert(image.intsEnabled());
 		if (!mustCallPreemption())
 			return;
 		if (deferPreemption(image))

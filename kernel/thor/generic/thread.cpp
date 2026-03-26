@@ -693,11 +693,11 @@ void Thread::handlePreemption() {
 }
 
 void Thread::handlePreemption(IrqImageAccessor image) {
-	assert(!image.inManipulableDomain());
+	assert(!image.inUserMode());
 	genericHandlePreemption(image);
 }
 void Thread::handlePreemption(FaultImageAccessor image) {
-	assert(image.inKernelDomain());
+	assert(!image.inUserMode());
 	genericHandlePreemption(image);
 }
 

@@ -181,7 +181,7 @@ extern "C" void onPlatformSyncFault(FaultImageAccessor image) {
 
 	// This syscall/fault may have woken up threads on this CPU.
 	// See Scheduler::resume() for details.
-	if (!image.inKernelDomain()) {
+	if (image.inUserMode()) {
 		auto thisThread = getCurrentThread();
 		assert(thisThread);
 
