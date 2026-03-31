@@ -75,7 +75,7 @@ namespace {
 
 frg::manual_box<KernelPageSpace> kernelSpace;
 
-frg::manual_box<EternalCounter> kernelSpaceCounter;
+frg::manual_box<EternalBase> kernelSpaceCounter;
 frg::manual_box<smarter::shared_ptr<KernelPageSpace>> kernelSpacePtr;
 
 } // namespace anonymous
@@ -92,7 +92,7 @@ void KernelPageSpace::initialize() {
 	kernelSpacePtr.initialize(
 		smarter::adopt_rc,
 		kernelSpace.get(),
-		kernelSpaceCounter.get());
+		smarter::default_rc_policy{kernelSpaceCounter.get()});
 }
 
 KernelPageSpace &KernelPageSpace::global() {

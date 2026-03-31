@@ -359,12 +359,11 @@ coroutine<void> executeModule(frg::string_view name, MfsRegular *module,
 	params.argument = 0;
 
 	auto thread = Thread::create(std::move(universe), std::move(space), params);
-	thread->self = remove_tag_cast(thread);
 	thread->flags |= Thread::kFlagServer;
 
 	// see helCreateThread for the reasoning here
-	thread.ctr()->increment();
-	thread.ctr()->increment();
+	thread.policy().increment();
+	thread.policy().increment();
 
 	LoadBalancer::singleton().connect(thread.get(), getCpuData());
 	Scheduler::associate(thread.get(), scheduler);

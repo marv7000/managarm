@@ -968,13 +968,12 @@ namespace posix {
 				params.argument = 0;
 
 				auto new_thread = Thread::create(info.thread->getUniverse().lock(), info.thread->getAddressSpace().lock(), params);
-				new_thread->self = remove_tag_cast(new_thread);
 				new_thread->flags |= Thread::kFlagServer;
 				auto new_info = attachThread(new_thread);
 
 				// see helCreateThread for the reasoning here
-				new_thread.ctr()->increment();
-				new_thread.ctr()->increment();
+				new_thread.policy().increment();
+				new_thread.policy().increment();
 
 				info.thread->accessRegisters([&](Executor *executor) {
 					*executor->result0() = kHelErrNone;

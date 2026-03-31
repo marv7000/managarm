@@ -141,6 +141,7 @@ async::result<void> handleMemFdCreate(RequestContext& ctx) {
 	auto link = SpecialLink::makeSpecialLink(VfsType::regular, 0777);
 	auto memFile = smarter::make_shared<MemoryFile>(nullptr, link, (req->flags() & MFD_ALLOW_SEALING) == true);
 	MemoryFile::serve(memFile);
+	memFile->setupWeakFile(memFile);
 	auto file = File::constructHandle(std::move(memFile));
 
 	int flags = 0;

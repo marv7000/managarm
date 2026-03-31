@@ -12,7 +12,7 @@ namespace thor {
 namespace {
 
 constinit frg::manual_box<KernelPageSpace> kernelSpace;
-constinit frg::manual_box<EternalCounter> kernelSpaceCounter;
+constinit frg::manual_box<EternalBase> kernelSpaceCounter;
 constinit frg::manual_box<smarter::shared_ptr<KernelPageSpace>> kernelSpacePtr;
 
 } // namespace
@@ -62,7 +62,7 @@ void KernelPageSpace::initialize() {
 
 	// Construct an eternal smart_ptr to the kernel page space for global bindings.
 	kernelSpaceCounter.initialize();
-	kernelSpacePtr.initialize(smarter::adopt_rc, kernelSpace.get(), kernelSpaceCounter.get());
+	kernelSpacePtr.initialize(smarter::adopt_rc, kernelSpace.get(), smarter::default_rc_policy{kernelSpaceCounter.get()});
 }
 
 KernelPageSpace &KernelPageSpace::global() { return *kernelSpace; }

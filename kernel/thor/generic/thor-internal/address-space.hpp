@@ -730,11 +730,8 @@ private:
 	async::oneshot_event agingDoneEvent_;
 };
 
-struct AddressSpace final : VirtualSpace, smarter::crtp_counter<AddressSpace, BindableHandle> {
+struct AddressSpace final : VirtualSpace {
 	friend struct Mapping;
-
-	// Silence Clang warning about hidden overloads.
-	using smarter::crtp_counter<AddressSpace, BindableHandle>::dispose;
 
 	struct Operations final : VirtualOperations {
 		Operations(AddressSpace *space)
@@ -789,9 +786,9 @@ public:
 	static smarter::shared_ptr<AddressSpace, BindableHandle>
 	constructHandle(smarter::shared_ptr<AddressSpace> ptr) {
 		auto space = ptr.get();
-		space->setup(smarter::adopt_rc, ptr.ctr(), 1);
+		space->_bindableCtr.setup(smarter::adopt_rc, 1);
 		ptr.release();
-		return smarter::shared_ptr<AddressSpace, BindableHandle>{smarter::adopt_rc, space, space};
+		return smarter::shared_ptr<AddressSpace, BindableHandle>{smarter::adopt_rc, space, BindableHandle{space}};
 	}
 
 	static smarter::shared_ptr<AddressSpace, BindableHandle> create() {
@@ -808,13 +805,16 @@ public:
 
 	~AddressSpace();
 
-	void dispose(BindableHandle);
+	// Called when the BindableHandle refcount becomes zero.
+	void dispose();
 
 	FutexRealm localFutexRealm;
 
 	bool updatePageAccess(VirtualAddr address, PageFlags flags) {
 		return pageSpace_.updatePageAccess(address, flags);
 	}
+
+	smarter::counter _bindableCtr;
 
 private:
 	Operations ops_;
@@ -884,5 +884,16 @@ private:
 };
 
 void initializeReclaim();
+
+inline void BindableHandle::increment() const {
+	_space->_bindableCtr.increment();
+}
+
+inline void BindableHandle::decrement() const {
+	if(_space->_bindableCtr.decrement_and_check_if_zero()) {
+		_space->dispose();
+		_space->selfPtr.policy().decrement();
+	}
+}
 
 } // namespace thor

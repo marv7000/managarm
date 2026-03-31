@@ -366,7 +366,7 @@ void Thread::terminateCurrent_() {
 
 		// Release the kernel's reference to the thread after it finished execution.
 		auto threadSelf = thread->self;
-		threadSelf.ctr()->decrement();
+		threadSelf.policy().decrement();
 
 		// Run observer callbacks before re-scheduling (as callbacks may unblock threads).
 		while(!queue.empty()) {
@@ -583,7 +583,7 @@ Thread::~Thread() {
 }
 
 // This function has to initiate the thread's shutdown.
-void Thread::dispose(ActiveHandle) {
+void Thread::dispose() {
 	if(logCleanup)
 		infoLogger() << "thor: Killing thread after no more handles keep it alive" << frg::endlog;
 	raiseCondition_(condition::terminate);

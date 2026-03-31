@@ -14,7 +14,7 @@ LaneHandle::~LaneHandle() {
 		return;
 
 	if(Stream::decrementPeers(_stream.get(), _lane))
-		_stream.ctr()->decrement();
+		_stream.policy().decrement();
 }
 
 struct OfferAccept { };
@@ -154,9 +154,9 @@ void Stream::Submitter::run() {
 			// * One reference for the original shared pointer.
 			// * One reference for each of the two lanes.
 			auto branch = smarter::allocate_shared<Stream>(*kernelAlloc);
-			assert(branch.ctr()->check_count() == 1);
-			branch.ctr()->increment();
-			branch.ctr()->increment();
+			assert(branch.policy().base()->ctr().check_count() == 1);
+			branch.policy().increment();
+			branch.policy().increment();
 			u->_lane = LaneHandle{adoptLane, branch, 0};
 			v->_lane = LaneHandle{adoptLane, branch, 1};
 
@@ -347,8 +347,8 @@ void Stream::_cancelItem(StreamNode *item, Error error) {
 
 frg::tuple<LaneHandle, LaneHandle> createStream(bool withCredentials) {
 	auto stream = smarter::allocate_shared<Stream>(*kernelAlloc, withCredentials);
-	assert(stream.ctr()->check_count() == 1);
-	stream.ctr()->increment();
+	assert(stream.policy().base()->ctr().check_count() == 1);
+	stream.policy().increment();
 	LaneHandle handle1(adoptLane, stream, 0);
 	LaneHandle handle2(adoptLane, stream, 1);
 	stream.release();
