@@ -39,6 +39,9 @@ struct ActiveHandle {
 	void increment() const;
 	void decrement() const;
 
+	smarter::default_rc_policy
+	downcast_policy(smarter::rc_policy_tag<smarter::default_rc_policy>) const;
+
 private:
 	Thread *_thread{nullptr};
 };

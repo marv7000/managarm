@@ -66,13 +66,6 @@ constexpr int loadShift = 10;
 struct Thread;
 struct LbControlBlock;
 
-template <template<typename...> typename Ptr, typename T, smarter::rc_policy P>
-	requires (!std::is_same_v<P, smarter::default_rc_policy>)
-Ptr<T> remove_tag_cast(const Ptr<T, P> &other) {
-	other->self.policy().increment();
-	return Ptr<T>{smarter::adopt_rc, other.get(), other->self.policy()};
-}
-
 smarter::borrowed_ptr<Thread> getCurrentThread();
 
 struct Thread final : ScheduleEntity, Credentials {
@@ -531,6 +524,11 @@ inline void ActiveHandle::decrement() const {
 		_thread->dispose();
 		_thread->self.policy().decrement();
 	}
+}
+
+inline smarter::default_rc_policy
+ActiveHandle::downcast_policy(smarter::rc_policy_tag<smarter::default_rc_policy>) const {
+	return _thread->self.policy();
 }
 
 } // namespace thor
