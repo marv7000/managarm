@@ -29,7 +29,7 @@ jobs:
                 echo "caching-key=$head-$mlibc_head" > "$GITHUB_OUTPUT"
           - id: cache-rootfs
             name: Cache rootfs
-            uses: actions/cache@v4
+            uses: actions/cache@v5
             with:
                 key: "rootfs-${{ steps.head.outputs.caching-key }}"
                 # Note: must be kept in sync with the restore action (effectively part of the key).
@@ -62,7 +62,7 @@ jobs:
         steps:
           - id: cache-xbps
             name: Cache xbps packages
-            uses: actions/cache@v4
+            uses: actions/cache@v5
             with:
                 key: "xbps-${{ matrix.arch }}-${{ needs.cache-generic.outputs.caching-key }}"
                 # Note: must be kept in sync with the restore action (effectively part of the key).
@@ -75,13 +75,13 @@ jobs:
                 xbstrap prereqs cbuildrt xbps
           - name: Checkout bootstrap-managarm
             if: steps.cache-xbps.outputs.cache-hit != 'true'
-            uses: actions/checkout@v2
+            uses: actions/checkout@v6
             with:
                 repository: managarm/bootstrap-managarm
                 ref: ${{ needs.cache-generic.outputs.bootstrap-commit }}
                 path: src/
           - name: Checkout Managarm
-            uses: actions/checkout@v2
+            uses: actions/checkout@v6
             with:
                 path: src/managarm/
                 fetch-depth: 0
@@ -129,27 +129,27 @@ jobs:
                 pip3 install xbstrap y4
                 xbstrap prereqs cbuildrt xbps
           - name: Restore rootfs cache
-            uses: actions/cache/restore@v4
+            uses: actions/cache/restore@v5
             with:
                 key: "rootfs-${{ needs.cache-generic.outputs.caching-key }}"
                 # Note: must be kept in sync with the cache action (effectively part of the key).
                 path: rootfs/
                 fail-on-cache-miss: true
           - name: Restore xbps cache
-            uses: actions/cache/restore@v4
+            uses: actions/cache/restore@v5
             with:
                 key: "xbps-${{ matrix.arch }}-${{ needs.cache-generic.outputs.caching-key }}"
                 # Note: must be kept in sync with the restore action (effectively part of the key).
                 path: build/xbps-repo/*.xbps
                 fail-on-cache-miss: true
           - name: Checkout bootstrap-managarm
-            uses: actions/checkout@v2
+            uses: actions/checkout@v6
             with:
                 repository: managarm/bootstrap-managarm
                 ref: ${{ needs.cache-generic.outputs.corresponding-bootstrap }}
                 path: src/
           - name: Checkout Managarm
-            uses: actions/checkout@v2
+            uses: actions/checkout@v6
             with:
                 path: src/managarm/
                 fetch-depth: 0
@@ -231,27 +231,27 @@ jobs:
                 pip3 install xbstrap y4
                 xbstrap prereqs cbuildrt xbps
           - name: Restore rootfs cache
-            uses: actions/cache/restore@v4
+            uses: actions/cache/restore@v5
             with:
                 key: "rootfs-${{ needs.cache-generic.outputs.caching-key }}"
                 # Note: must be kept in sync with the cache action (effectively part of the key).
                 path: rootfs/
                 fail-on-cache-miss: true
           - name: Restore xbps cache
-            uses: actions/cache/restore@v4
+            uses: actions/cache/restore@v5
             with:
                 key: "xbps-${{ matrix.arch }}-${{ needs.cache-generic.outputs.caching-key }}"
                 # Note: must be kept in sync with the restore action (effectively part of the key).
                 path: build/xbps-repo/*.xbps
                 fail-on-cache-miss: true
           - name: Checkout bootstrap-managarm
-            uses: actions/checkout@v2
+            uses: actions/checkout@v6
             with:
                 repository: managarm/bootstrap-managarm
                 ref: ${{ needs.cache-generic.outputs.corresponding-bootstrap }}
                 path: src/
           - name: Checkout Managarm
-            uses: actions/checkout@v2
+            uses: actions/checkout@v6
             with:
                 path: src/managarm/
                 fetch-depth: 0
@@ -278,7 +278,7 @@ jobs:
                 XBPS_ARCH: ${{ matrix.arch }}
             working-directory: build/
           - name: Upload artifact
-            uses: actions/upload-artifact@v4
+            uses: actions/upload-artifact@v6
             with:
                 name: "${{ matrix.arch }}-${{ matrix.pkg }}${{ matrix.variant-suffix }}"
                 path: "build/xbps-repo/${{ matrix.pkg }}*.xbps"
@@ -322,47 +322,47 @@ jobs:
                 pip3 install xbstrap y4
                 xbstrap prereqs cbuildrt xbps
           - name: Restore rootfs cache
-            uses: actions/cache/restore@v4
+            uses: actions/cache/restore@v5
             with:
                 key: "rootfs-${{ needs.cache-generic.outputs.caching-key }}"
                 # Note: must be kept in sync with the cache action (effectively part of the key).
                 path: rootfs/
                 fail-on-cache-miss: true
           - name: Restore xbps cache
-            uses: actions/cache/restore@v4
+            uses: actions/cache/restore@v5
             with:
                 key: "xbps-${{ matrix.arch }}-${{ needs.cache-generic.outputs.caching-key }}"
                 # Note: must be kept in sync with the restore action (effectively part of the key).
                 path: build/xbps-repo/*.xbps
                 fail-on-cache-miss: true
           - name: Download managarm-kernel
-            uses: actions/download-artifact@v4
+            uses: actions/download-artifact@v8
             with:
                 name: "${{ matrix.arch }}-managarm-kernel${{ matrix.variant-suffix }}"
                 path: build/xbps-repo/
           - name: Download managarm-kernel-uefi
-            uses: actions/download-artifact@v4
+            uses: actions/download-artifact@v8
             with:
                 name: "${{ matrix.arch }}-managarm-kernel-uefi${{ matrix.variant-suffix }}"
                 path: build/xbps-repo/
           - name: Download managarm-system
-            uses: actions/download-artifact@v4
+            uses: actions/download-artifact@v8
             with:
                 name: "${{ matrix.arch }}-managarm-system"
                 path: build/xbps-repo/
           - name: Download managarm-system-rs
-            uses: actions/download-artifact@v4
+            uses: actions/download-artifact@v8
             with:
                 name: "${{ matrix.arch }}-managarm-system-rs"
                 path: build/xbps-repo/
           - name: Checkout bootstrap-managarm
-            uses: actions/checkout@v2
+            uses: actions/checkout@v6
             with:
                 repository: managarm/bootstrap-managarm
                 ref: ${{ needs.cache-generic.outputs.corresponding-bootstrap }}
                 path: src/
           - name: Checkout Managarm
-            uses: actions/checkout@v2
+            uses: actions/checkout@v6
             with:
                 path: src/managarm/
                 fetch-depth: 0
@@ -401,13 +401,13 @@ jobs:
                 xbstrap run test-image
             working-directory: build/
           - name: Upload log files
-            uses: actions/upload-artifact@v4
+            uses: actions/upload-artifact@v6
             if: ${{ always() }}
             with:
                 name: "logfiles-${{ matrix.arch }}${{ matrix.variant-suffix }}"
                 path: "build/ci-*.txt"
           - name: Upload os-test results
-            uses: actions/upload-artifact@v4
+            uses: actions/upload-artifact@v6
             if: matrix.arch == 'x86_64'
             with:
                 name: "os-test-results-managarm-${{ matrix.arch }}.tar.gz"
