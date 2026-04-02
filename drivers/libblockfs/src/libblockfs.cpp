@@ -452,8 +452,10 @@ async::detached runDevice(BlockDevice *device) {
 		tracingInitialized = true;
 	}
 
-	if(!clkInitialized)
+	if(!clkInitialized) {
 		co_await clk::enumerateTracker();
+		clkInitialized = true;
+	}
 
 	// TODO(qookie): Don't leak the table.
 	// Currently it should be fine to leak it since neither it nor
