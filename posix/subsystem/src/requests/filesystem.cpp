@@ -1538,6 +1538,7 @@ async::result<void> handleOpenAt(RequestContext& ctx) {
 
 		if(req->flags() & managarm::posix::OpenFlags::OF_PATH) {
 			auto dummyFile = smarter::make_shared<DummyFile>(resolver.currentView(), resolver.currentLink());
+			dummyFile->setupWeakFile(dummyFile);
 			DummyFile::serve(dummyFile);
 			file = File::constructHandle(std::move(dummyFile));
 		} else {

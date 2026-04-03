@@ -296,7 +296,7 @@ void VirtualSpace::retire() {
 				co_await mapping->evictionDoneEvent.wait();
 			}
 			mapping->view->removeObserver(&mapping->observer);
-			mapping->selfPtr.ctr()->decrement();
+			mapping->selfPtr.policy().decrement();
 		}
 	}(selfPtr.lock()));
 }
@@ -474,7 +474,7 @@ VirtualSpace::map(smarter::borrowed_ptr<MemorySlice> slice,
 		mapping->state.store(MappingState::active, std::memory_order_relaxed);
 
 		// We keep one reference until the detach the observer.
-		mapping.ctr()->increment();
+		mapping.policy().increment();
 		mapping->view->addObserver(&mapping->observer);
 
 	}
@@ -1005,13 +1005,13 @@ coroutine<frg::tuple<Mapping *, Mapping *>> VirtualSpace::_splitMappings(uintptr
 
 			// Retire the old mapping and start using the new ones.
 			// We keep one reference until the detach the observer.
-			leftMapping.ctr()->increment();
+			leftMapping.policy().increment();
 			leftMapping->view->addObserver(&leftMapping->observer);
 			if (leftMapping->view->canEvictMemory())
 				spawnOnWorkQueue(*kernelAlloc, WorkQueue::generalQueue().lock(), leftMapping->runEvictionLoop());
 
 			// We keep one reference until the detach the observer.
-			rightMapping.ctr()->increment();
+			rightMapping.policy().increment();
 			rightMapping->view->addObserver(&rightMapping->observer);
 			if (rightMapping->view->canEvictMemory())
 				spawnOnWorkQueue(*kernelAlloc, WorkQueue::generalQueue().lock(), rightMapping->runEvictionLoop());
@@ -1024,7 +1024,7 @@ coroutine<frg::tuple<Mapping *, Mapping *>> VirtualSpace::_splitMappings(uintptr
 				co_await mapping->evictionDoneEvent.wait();
 			}
 			mapping->view->removeObserver(&mapping->observer);
-			mapping->selfPtr.ctr()->decrement();
+			mapping->selfPtr.policy().decrement();
 
 			// If start pointed to the freshly-removed mapping,
 			// determine the correct mapping to use as our new start.
@@ -1084,7 +1084,7 @@ coroutine<void> VirtualSpace::_unmapMappings(VirtualAddr address, size_t length,
 				co_await mapping->evictionDoneEvent.wait();
 			}
 			mapping->view->removeObserver(&mapping->observer);
-			mapping->selfPtr.ctr()->decrement();
+			mapping->selfPtr.policy().decrement();
 
 			// Finally, coalesce the hole in the hole tree.
 
@@ -1242,7 +1242,7 @@ AddressSpace::AddressSpace()
 
 AddressSpace::~AddressSpace() { }
 
-void AddressSpace::dispose(BindableHandle) {
+void AddressSpace::dispose() {
 	retire();
 }
 

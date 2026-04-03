@@ -359,17 +359,16 @@ coroutine<void> executeModule(frg::string_view name, MfsRegular *module,
 	params.argument = 0;
 
 	auto thread = Thread::create(std::move(universe), std::move(space), params);
-	thread->self = remove_tag_cast(thread);
 	thread->flags |= Thread::kFlagServer;
 
 	// see helCreateThread for the reasoning here
-	thread.ctr()->increment();
-	thread.ctr()->increment();
+	thread.policy().increment();
+	thread.policy().increment();
 
 	LoadBalancer::singleton().connect(thread.get(), getCpuData());
 	Scheduler::associate(thread.get(), scheduler);
 	Scheduler::resume(thread.get());
-	Thread::resumeOther(remove_tag_cast(thread));
+	Thread::resumeOther(smarter::rc_policy_downcast<smarter::default_rc_policy>(thread));
 
 	// Listen to POSIX calls from the thread.
 	// Call this after resumeOther() to ensure that we do not see the initial interrupt.

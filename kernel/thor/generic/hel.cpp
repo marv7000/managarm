@@ -1848,7 +1848,6 @@ HelError helCreateThread(HelHandle universe_handle, HelHandle space_handle,
 	params.sp = (uintptr_t)sp;
 
 	auto new_thread = Thread::create(std::move(universe), std::move(space), params);
-	new_thread->self = remove_tag_cast(new_thread);
 
 	// Adding a large prime (coprime to getCpuCount()) should yield a good distribution.
 	auto cpuIndex = globalNextCpu.fetch_add(4099, std::memory_order_relaxed) % getCpuCount();
@@ -1858,7 +1857,7 @@ HelError helCreateThread(HelHandle universe_handle, HelHandle space_handle,
 	Scheduler::associate(new_thread.get(), &localScheduler.get(cpu));
 	Scheduler::resume(new_thread.get());
 	if(!(flags & kHelThreadStopped))
-		Thread::resumeOther(remove_tag_cast(new_thread));
+		Thread::resumeOther(smarter::rc_policy_downcast<smarter::default_rc_policy>(new_thread));
 
 	{
 		auto irq_lock = frg::guard(&irqMutex());
@@ -1887,7 +1886,7 @@ HelError helQueryThreadStats(HelHandle handle, HelThreadStats *user_stats) {
 			return kHelErrNoDescriptor;
 		if(!thread_wrapper->is<ThreadDescriptor>())
 			return kHelErrBadDescriptor;
-		thread = remove_tag_cast(thread_wrapper->get<ThreadDescriptor>().thread);
+		thread = smarter::rc_policy_downcast<smarter::default_rc_policy>(thread_wrapper->get<ThreadDescriptor>().thread);
 	}
 
 	HelThreadStats stats;
@@ -1916,7 +1915,7 @@ HelError helSetPriority(HelHandle handle, int priority) {
 			return kHelErrNoDescriptor;
 		if(!thread_wrapper->is<ThreadDescriptor>())
 			return kHelErrBadDescriptor;
-		thread = remove_tag_cast(thread_wrapper->get<ThreadDescriptor>().thread);
+		thread = smarter::rc_policy_downcast<smarter::default_rc_policy>(thread_wrapper->get<ThreadDescriptor>().thread);
 	}
 
 	Scheduler::setPriority(thread.get(), priority);
@@ -1945,7 +1944,7 @@ HelError doSubmitObserve(HelHandle handle, smarter::shared_ptr<IpcQueue> queue,
 			return kHelErrNoDescriptor;
 		if(!threadWrapper->is<ThreadDescriptor>())
 			return kHelErrBadDescriptor;
-		thread = remove_tag_cast(threadWrapper->get<ThreadDescriptor>().thread);
+		thread = smarter::rc_policy_downcast<smarter::default_rc_policy>(threadWrapper->get<ThreadDescriptor>().thread);
 	}
 
 	if(!queue->validSize(ipcSourceSize(sizeof(HelObserveResult))))
@@ -2001,7 +2000,7 @@ HelError helKillThread(HelHandle handle) {
 			return kHelErrNoDescriptor;
 		if(!thread_wrapper->is<ThreadDescriptor>())
 			return kHelErrBadDescriptor;
-		thread = remove_tag_cast(thread_wrapper->get<ThreadDescriptor>().thread);
+		thread = smarter::rc_policy_downcast<smarter::default_rc_policy>(thread_wrapper->get<ThreadDescriptor>().thread);
 	}
 
 	Thread::killOther(thread);
@@ -2023,7 +2022,7 @@ HelError helInterruptThread(HelHandle handle) {
 			return kHelErrNoDescriptor;
 		if(!thread_wrapper->is<ThreadDescriptor>())
 			return kHelErrBadDescriptor;
-		thread = remove_tag_cast(thread_wrapper->get<ThreadDescriptor>().thread);
+		thread = smarter::rc_policy_downcast<smarter::default_rc_policy>(thread_wrapper->get<ThreadDescriptor>().thread);
 	}
 
 	Thread::interruptOther(thread);
@@ -2045,7 +2044,7 @@ HelError helResume(HelHandle handle) {
 			return kHelErrNoDescriptor;
 		if(!thread_wrapper->is<ThreadDescriptor>())
 			return kHelErrBadDescriptor;
-		thread = remove_tag_cast(thread_wrapper->get<ThreadDescriptor>().thread);
+		thread = smarter::rc_policy_downcast<smarter::default_rc_policy>(thread_wrapper->get<ThreadDescriptor>().thread);
 	}
 
 	if(auto e = Thread::resumeOther(thread); e != Error::success) {
@@ -2072,7 +2071,7 @@ HelError helLoadRegisters(HelHandle handle, int set, void *image) {
 		if(!thread_wrapper)
 			return kHelErrNoDescriptor;
 		if(thread_wrapper->is<ThreadDescriptor>()) {
-			thread = remove_tag_cast(thread_wrapper->get<ThreadDescriptor>().thread);
+			thread = smarter::rc_policy_downcast<smarter::default_rc_policy>(thread_wrapper->get<ThreadDescriptor>().thread);
 		} else if(thread_wrapper->is<VirtualizedCpuDescriptor>()) {
 			vcpu = thread_wrapper->get<VirtualizedCpuDescriptor>();
 		}else{
@@ -2309,7 +2308,7 @@ HelError helStoreRegisters(HelHandle handle, int set, const void *image) {
 		if(!thread_wrapper)
 			return kHelErrNoDescriptor;
 		if(thread_wrapper->is<ThreadDescriptor>()) {
-			thread = remove_tag_cast(thread_wrapper->get<ThreadDescriptor>().thread);
+			thread = smarter::rc_policy_downcast<smarter::default_rc_policy>(thread_wrapper->get<ThreadDescriptor>().thread);
 		}else if(thread_wrapper->is<VirtualizedCpuDescriptor>()) {
 			vcpu = thread_wrapper->get<VirtualizedCpuDescriptor>();
 		}else{
@@ -3702,7 +3701,7 @@ HelError helGetAffinity(HelHandle handle, uint8_t *mask, size_t size, size_t *ac
 			return kHelErrNoDescriptor;
 		if(!thread_wrapper->is<ThreadDescriptor>())
 			return kHelErrBadDescriptor;
-		thread = remove_tag_cast(thread_wrapper->get<ThreadDescriptor>().thread);
+		thread = smarter::rc_policy_downcast<smarter::default_rc_policy>(thread_wrapper->get<ThreadDescriptor>().thread);
 	}
 
 	frg::vector<uint8_t, KernelAlloc> buf{*kernelAlloc};
@@ -3757,7 +3756,7 @@ HelError helSetAffinity(HelHandle handle, uint8_t *mask, size_t size) {
 				return kHelErrNoDescriptor;
 			if(!thread_wrapper->is<ThreadDescriptor>())
 				return kHelErrBadDescriptor;
-			thread = remove_tag_cast(thread_wrapper->get<ThreadDescriptor>().thread);
+			thread = smarter::rc_policy_downcast<smarter::default_rc_policy>(thread_wrapper->get<ThreadDescriptor>().thread);
 		}
 
 		thread->_lbCb->setAffinityMask({buf.data(), maskSize});

@@ -871,7 +871,7 @@ namespace posix {
 					*executor->result0() = kHelErrNone;
 					*executor->result1() = mapResult.value();
 				});
-				if(auto e = Thread::resumeOther(remove_tag_cast(info.thread)); e != Error::success)
+				if(auto e = Thread::resumeOther(smarter::rc_policy_downcast<smarter::default_rc_policy>(info.thread)); e != Error::success)
 					panicLogger() << "thor: Failed to resume server" << frg::endlog;
 			}else if(interrupt == kIntrSuperCall + ::posix::superAnonDeallocate) { // ANON_FREE.
 				uintptr_t address;
@@ -892,7 +892,7 @@ namespace posix {
 					}
 					*executor->result1() = 0;
 				});
-				if(auto e = Thread::resumeOther(remove_tag_cast(info.thread)); e != Error::success)
+				if(auto e = Thread::resumeOther(smarter::rc_policy_downcast<smarter::default_rc_policy>(info.thread)); e != Error::success)
 					panicLogger() << "thor: Failed to resume server" << frg::endlog;
 			}else if(interrupt == kIntrSuperCall + ::posix::superGetProcessData) {
 				uintptr_t dataAddr;
@@ -917,7 +917,7 @@ namespace posix {
 						*executor->result0() = kHelErrNone;
 					}
 				});
-				if(auto e = Thread::resumeOther(remove_tag_cast(info.thread)); e != Error::success)
+				if(auto e = Thread::resumeOther(smarter::rc_policy_downcast<smarter::default_rc_policy>(info.thread)); e != Error::success)
 					panicLogger() << "thor: Failed to resume server" << frg::endlog;
 			}else if(interrupt == kIntrSuperCall + ::posix::superGetServerData) {
 				uintptr_t dataAddr;
@@ -938,21 +938,21 @@ namespace posix {
 						*executor->result0() = kHelErrNone;
 					}
 				});
-				if(auto e = Thread::resumeOther(remove_tag_cast(info.thread)); e != Error::success)
+				if(auto e = Thread::resumeOther(smarter::rc_policy_downcast<smarter::default_rc_policy>(info.thread)); e != Error::success)
 					panicLogger() << "thor: Failed to resume server" << frg::endlog;
 			}else if(interrupt == kIntrSuperCall + ::posix::superSigMask) { // sigprocmask.
 				info.thread->accessRegisters([&](Executor *executor) {
 					*executor->result0() = kHelErrNone;
 					*executor->result1() = 0;
 				});
-				if(auto e = Thread::resumeOther(remove_tag_cast(info.thread)); e != Error::success)
+				if(auto e = Thread::resumeOther(smarter::rc_policy_downcast<smarter::default_rc_policy>(info.thread)); e != Error::success)
 					panicLogger() << "thor: Failed to resume server" << frg::endlog;
 			}else if(interrupt == kIntrSuperCall + ::posix::superGetTid) {
 				info.thread->accessRegisters([&](Executor *executor) {
 					*executor->result0() = kHelErrNone;
 					*executor->result1() = info.tid;
 				});
-				if(auto e = Thread::resumeOther(remove_tag_cast(info.thread)); e != Error::success)
+				if(auto e = Thread::resumeOther(smarter::rc_policy_downcast<smarter::default_rc_policy>(info.thread)); e != Error::success)
 					panicLogger() << "thor: Failed to resume server" << frg::endlog;
 			}else if(interrupt == kIntrSuperCall + ::posix::superClone) {
 				uintptr_t argIp;
@@ -968,13 +968,12 @@ namespace posix {
 				params.argument = 0;
 
 				auto new_thread = Thread::create(info.thread->getUniverse().lock(), info.thread->getAddressSpace().lock(), params);
-				new_thread->self = remove_tag_cast(new_thread);
 				new_thread->flags |= Thread::kFlagServer;
 				auto new_info = attachThread(new_thread);
 
 				// see helCreateThread for the reasoning here
-				new_thread.ctr()->increment();
-				new_thread.ctr()->increment();
+				new_thread.policy().increment();
+				new_thread.policy().increment();
 
 				info.thread->accessRegisters([&](Executor *executor) {
 					*executor->result0() = kHelErrNone;
@@ -985,9 +984,9 @@ namespace posix {
 				Scheduler::associate(new_thread.get(), &localScheduler.get());
 				Scheduler::resume(new_thread.get());
 
-				if(auto e = Thread::resumeOther(remove_tag_cast(new_thread)); e != Error::success)
+				if(auto e = Thread::resumeOther(smarter::rc_policy_downcast<smarter::default_rc_policy>(new_thread)); e != Error::success)
 					panicLogger() << "thor: Failed to resume server" << frg::endlog;
-				if(auto e = Thread::resumeOther(remove_tag_cast(info.thread)); e != Error::success)
+				if(auto e = Thread::resumeOther(smarter::rc_policy_downcast<smarter::default_rc_policy>(info.thread)); e != Error::success)
 					panicLogger() << "thor: Failed to resume server" << frg::endlog;
 			}else if(interrupt == kIntrSuperCall + ::posix::superExit) {
 				break;

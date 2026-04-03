@@ -22,7 +22,22 @@ struct FsLink;
 struct Process;
 struct ControllingTerminalState;
 
-struct FileHandle { };
+struct FileHandle {
+	FileHandle() = default;
+
+	explicit FileHandle(File *file)
+	: _file{file} { }
+
+	explicit operator bool() const {
+		return _file != nullptr;
+	}
+
+	void increment() const;
+	void decrement() const;
+
+private:
+	File *_file{nullptr};
+};
 
 using SharedFilePtr = smarter::shared_ptr<File, FileHandle>;
 
@@ -267,8 +282,6 @@ using PollStatusResult = std::tuple<uint64_t, int>;
 
 using AcceptResult = smarter::shared_ptr<File, FileHandle>;
 
-struct DisposeFileHandle { };
-
 enum class FileKind {
 	unknown,
 	pidfd,
@@ -276,10 +289,8 @@ enum class FileKind {
 	inotify,
 };
 
-struct File : private smarter::crtp_counter<File, DisposeFileHandle> {
-	friend struct smarter::crtp_counter<File, DisposeFileHandle>;
-
-	using smarter::crtp_counter<File, DisposeFileHandle>::dispose;
+struct File {
+	friend struct FileHandle;
 
 public:
 	using DefaultOps = uint32_t;
@@ -406,9 +417,12 @@ public:
 	// ------------------------------------------------------------------------
 
 	static smarter::shared_ptr<File, FileHandle> constructHandle(smarter::shared_ptr<File> ptr) {
-		auto [file, object_ctr] = ptr.release();
-		file->setup(smarter::adopt_rc, object_ctr, 1);
-		return smarter::shared_ptr<File, FileHandle>{smarter::adopt_rc, file, file};
+		// _weakFile is used in FileHandle::decrement().
+		assert(ptr->_weakPtr.policy());
+		auto file = ptr.get();
+		ptr.release();
+		file->_fileCtr.setup(smarter::adopt_rc, 1);
+		return smarter::shared_ptr<File, FileHandle>{smarter::adopt_rc, file, FileHandle{file}};
 	}
 
 	File(FileKind kind, StructName struct_name, DefaultOps default_ops = 0)
@@ -446,7 +460,8 @@ public:
 	virtual void handleClose();
 
 private:
-	void dispose(DisposeFileHandle) {
+	// Called when the FileHandle refcount becomes zero.
+	void dispose() {
 		_isOpen = false;
 		handleClose();
 	}
@@ -559,6 +574,7 @@ public:
 
 	virtual async::result<std::string> getFdInfo();
 private:
+	smarter::counter _fileCtr;
 	smarter::weak_ptr<File> _weakPtr;
 	FileKind kind_;
 	StructName _structName;
@@ -612,3 +628,14 @@ struct PassthroughFile : File {
 private:
 	protocols::fs::File _file;
 };
+
+inline void FileHandle::increment() const {
+	_file->_fileCtr.increment();
+}
+
+inline void FileHandle::decrement() const {
+	if(_file->_fileCtr.decrement_and_check_if_zero()) {
+		_file->dispose();
+		_file->_weakPtr.policy().decrement();
+	}
+}

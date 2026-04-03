@@ -20,7 +20,6 @@ struct MemorySlice;
 struct NamedMemoryViewLock;
 struct KernletObject;
 struct BoundKernlet;
-struct ActiveHandle;
 struct Credentials;
 
 struct QueueDescriptor {

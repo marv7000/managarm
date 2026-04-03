@@ -66,22 +66,9 @@ constexpr int loadShift = 10;
 struct Thread;
 struct LbControlBlock;
 
-template <template<typename, typename> typename Ptr, typename T, typename H>
-	requires (!std::is_same_v<H, void>)
-Ptr<T, void> remove_tag_cast(const Ptr<T, H> &other) {
-	other.ctr()->holder()->increment();
-	auto ret = Ptr<T, void>{smarter::adopt_rc, other.get(), other.ctr()->holder()};
-	return ret;
-}
-
 smarter::borrowed_ptr<Thread> getCurrentThread();
 
-struct ActiveHandle { };
-
-struct Thread final : smarter::crtp_counter<Thread, ActiveHandle>, ScheduleEntity, Credentials {
-	// Silence Clang warning about hidden overloads.
-	using smarter::crtp_counter<Thread, ActiveHandle>::dispose;
-
+struct Thread final : ScheduleEntity, Credentials {
 private:
 	struct AssociatedWorkQueue final : WorkQueue {
 		AssociatedWorkQueue(Thread *thread, Ipl wqIpl)
@@ -145,17 +132,16 @@ public:
 			AbiParameters abi) {
 		auto thread = smarter::allocate_shared<Thread>(*kernelAlloc,
 				std::move(universe), std::move(address_space), abi);
+		thread->self = thread;
 		thread->_executorContext.exceptionalWq = &thread->_pagingWorkQueue;
 
 		// The kernel owns one reference to the thread until the thread finishes execution.
-		thread.ctr()->increment();
+		thread.policy().increment();
 
 		auto ptr = thread.get();
-		ptr->setup(smarter::adopt_rc, thread.ctr(), 1);
+		ptr->_activeCtr.setup(smarter::adopt_rc, 1);
 		thread.release();
-		smarter::shared_ptr<Thread, ActiveHandle> sptr{smarter::adopt_rc, ptr, ptr};
-
-		return sptr;
+		return smarter::shared_ptr<Thread, ActiveHandle>{smarter::adopt_rc, ptr, ActiveHandle{ptr}};
 	}
 
 	template <typename Sender>
@@ -300,10 +286,10 @@ public:
 	~Thread();
 
 	smarter::borrowed_ptr<WorkQueue> mainWorkQueue() {
-		return {&_mainWorkQueue, self.ctr()};
+		return {&_mainWorkQueue, self.policy()};
 	}
 	smarter::borrowed_ptr<WorkQueue> pagingWorkQueue() {
-		return {&_pagingWorkQueue, self.ctr()};
+		return {&_pagingWorkQueue, self.policy()};
 	}
 
 	UserContext &getContext();
@@ -359,7 +345,8 @@ public:
 	// ----------------------------------------------------------------------------------
 
 	// TODO: Do not expose these functions publically.
-	void dispose(ActiveHandle); // Called when shared_ptr refcount reaches zero.
+	// Called when the ActiveHandle refcount reaches zero.
+	void dispose();
 
 	[[ noreturn ]] void invoke() override;
 
@@ -402,6 +389,7 @@ private:
 
 public:
 	// TODO: Tidy this up.
+	smarter::counter _activeCtr;
 	smarter::borrowed_ptr<Thread> self;
 
 	uint32_t flags;
@@ -526,5 +514,21 @@ private:
 
 	ObserveQueue _observeQueue;
 };
+
+inline void ActiveHandle::increment() const {
+	_thread->_activeCtr.increment();
+}
+
+inline void ActiveHandle::decrement() const {
+	if(_thread->_activeCtr.decrement_and_check_if_zero()) {
+		_thread->dispose();
+		_thread->self.policy().decrement();
+	}
+}
+
+inline smarter::default_rc_policy
+ActiveHandle::downcast_policy(smarter::rc_policy_tag<smarter::default_rc_policy>) const {
+	return _thread->self.policy();
+}
 
 } // namespace thor

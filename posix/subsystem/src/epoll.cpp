@@ -121,7 +121,7 @@ private:
 			if(!(item->state & statePending)) {
 				item->state |= statePending;
 
-				item->self.lock().ctr()->increment();
+				item->self.lock().policy().increment();
 				self->_pendingQueue.push_back(item);
 				self->_currentSeq++;
 				self->_statusBell.raise();
@@ -173,7 +173,7 @@ public:
 
 		_fileMap.insert({{item->file.get(), fd}, item});
 
-		item.ctr()->increment();
+		item.policy().increment();
 		_pendingQueue.push_back(item.get());
 		_currentSeq++;
 		_statusBell.raise();
@@ -202,7 +202,7 @@ public:
 		if(!(item->state & statePending)) {
 			item->state |= statePending | stateActive;
 
-			item.ctr()->increment();
+			item.policy().increment();
 			_pendingQueue.push_back(item.get());
 			_currentSeq++;
 			_statusBell.raise();
@@ -248,7 +248,7 @@ public:
 			while(!_pendingQueue.empty()) {
 				auto item = _pendingQueue.front()->self.lock();
 				_pendingQueue.pop_front();
-				item.ctr()->decrement();
+				item.policy().decrement();
 				assert(item->state & statePending);
 
 				auto itemEvents = item->eventMask & epollEvents;
@@ -322,7 +322,7 @@ public:
 							_awaitPoll(item.get());
 					}
 				} else {
-					item.ctr()->increment();
+					item.policy().increment();
 					repoll_queue.push_back(item.get());
 				}
 
@@ -374,7 +374,7 @@ public:
 		while(!_pendingQueue.empty()) {
 			auto item = _pendingQueue.front()->self.lock();
 			_pendingQueue.pop_front();
-			item.ctr()->decrement();
+			item.policy().decrement();
 			assert(item->state & statePending);
 			item->state &= ~statePending;
 		}
