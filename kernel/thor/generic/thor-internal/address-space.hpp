@@ -11,6 +11,7 @@
 #include <thor-internal/coroutine.hpp>
 #include <thor-internal/memory-view.hpp>
 #include <thor-internal/mm-rc.hpp>
+#include <thor-internal/rcu.hpp>
 
 namespace thor {
 
@@ -792,7 +793,10 @@ public:
 	}
 
 	static smarter::shared_ptr<AddressSpace, BindableHandle> create() {
-		auto ptr = smarter::allocate_shared<AddressSpace>(Allocator{});
+		// Note: technically, we do not rely on RCU here.
+		//       However, the refcount may be decrement in IRQ context
+		//       and RCU ensures that freeing happens on a work queue.
+		auto ptr = allocate_rcu_shared<AddressSpace>(Allocator{});
 		ptr->selfPtr = ptr;
 		ptr->setupInitialHole(0x1000, (UINT64_C(1) << getLowerHalfBits()) - 0x1000);
 		spawnOnWorkQueue(*kernelAlloc, WorkQueue::generalQueue().lock(), ptr->runAgingLoop());

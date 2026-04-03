@@ -4,7 +4,9 @@
 
 #include <async/recurring-event.hpp>
 #include <async/wait-group.hpp>
+#include <frg/allocation.hpp>
 #include <frg/list.hpp>
+#include <smarter.hpp>
 #include <thor-internal/coroutine.hpp>
 #include <thor-internal/cpu-data.hpp>
 
@@ -153,5 +155,55 @@ struct RcuPolicy {
 		std::optional<D> d_;
 	};
 };
+
+// shared_ptr integration with RCU.
+template<typename T, typename Deallocator>
+struct rcu_meta_object final
+: smarter::meta_object_base, RcuCallable {
+	template<typename... Args>
+	rcu_meta_object(Deallocator d, Args &&... args)
+	: smarter::meta_object_base{&finalize_, &finalize_weak_}, d_{std::move(d)} {
+		ctr().setup(smarter::adopt_rc, 1);
+		weak_ctr().setup(smarter::adopt_rc, 1);
+		box_.initialize(std::forward<Args>(args)...);
+	}
+
+	T *get() {
+		return box_.get();
+	}
+
+private:
+	static void finalize_(smarter::meta_object_base *base) {
+		auto self = static_cast<rcu_meta_object *>(base);
+		submitRcu(self, &rcu_callback_);
+	}
+
+	static void finalize_weak_(smarter::meta_object_base *base) {
+		auto self = static_cast<rcu_meta_object *>(base);
+		self->d_(self);
+	}
+
+	static void rcu_callback_(RcuCallable *rcuBase) {
+		auto self = static_cast<rcu_meta_object *>(rcuBase);
+		self->box_.destruct();
+		if(self->weak_ctr().decrement_and_check_if_zero())
+			self->finalize_weak();
+	}
+
+	frg::manual_box<T> box_;
+	Deallocator d_;
+};
+
+// Like smarter::allocate_shared() but calls the destructor via submitRcu().
+template<typename T, typename Allocator, typename... Args>
+smarter::shared_ptr<T> allocate_rcu_shared(Allocator alloc, Args &&... args) {
+	using meta_type = rcu_meta_object<T, smarter::allocator_deallocator<Allocator>>;
+	auto meta = frg::construct<meta_type>(
+		alloc,
+		smarter::allocator_deallocator<Allocator>{alloc},
+		std::forward<Args>(args)...
+	);
+	return smarter::shared_ptr<T>{smarter::adopt_rc, meta->get(), smarter::default_rc_policy{meta}};
+}
 
 } // namespace
