@@ -227,7 +227,7 @@ public:
 		if(_currentState != State::connected)
 			co_return Error::notConnected;
 		if(shutdownFlags_ & shutdownWrite) {
-			process->threadGroup()->signalContext()->issueSignal(SIGPIPE, {});
+			process->issueThreadSignal(SIGPIPE, {});
 			co_return Error::brokenPipe;
 		}
 
@@ -366,7 +366,7 @@ public:
 
 		if(shutdownFlags_ & shutdownWrite) {
 			if(!(flags & MSG_NOSIGNAL))
-				process->threadGroup()->signalContext()->issueSignal(SIGPIPE, {});
+				process->issueThreadSignal(SIGPIPE, {});
 			co_return protocols::fs::Error::brokenPipe;
 		}
 

@@ -571,9 +571,6 @@ void CompileSignalFdInfo::operator() (const SegfaultSignal &info) const {
 	}
 }
 
-SignalContext::SignalContext()
-: _currentSeq{1}, _activeSet{0} { }
-
 std::shared_ptr<SignalContext> SignalContext::create() {
 	auto context = std::make_shared<SignalContext>();
 
@@ -601,75 +598,135 @@ void SignalContext::resetHandlers() {
 }
 
 SignalHandler SignalContext::getHandler(int sn) {
+	assert(sn > 0);
+	assert(sn - 1 < 64);
 	return _handlers[sn - 1];
 }
 
 SignalHandler SignalContext::changeHandler(int sn, SignalHandler handler) {
+	assert(sn > 0);
 	assert(sn - 1 < 64);
 	return std::exchange(_handlers[sn - 1], handler);
 }
 
-void SignalContext::issueSignal(int sn, SignalInfo info) {
+void SignalQueue::issueSignal(int sn, SignalInfo info, uint64_t seq) {
 	assert(sn > 0);
 	assert(sn - 1 < 64);
 	auto item = new SignalItem;
 	item->signalNumber = sn;
 	item->info = info;
 
-	_slots[sn - 1].raiseSeq = ++_currentSeq;
-	_slots[sn - 1].asyncQueue.push_back(item);
-	_activeSet |= (UINT64_C(1) << (sn - 1));
-	_signalBell.raise();
+	slots_[sn - 1].raiseSeq = seq;
+	slots_[sn - 1].asyncQueue.push_back(item);
+	activeSet_ |= (UINT64_C(1) << (sn - 1));
+	signalBell_.raise();
+}
+
+void ThreadGroup::issueThreadGroupSignal(int sn, SignalInfo info) {
+	signalQueue_.issueSignal(sn, info, ++currentSignalSeq_);
+}
+
+void Process::issueThreadSignal(int sn, SignalInfo info) {
+	signalQueue.issueSignal(sn, info, ++threadGroup()->currentSignalSeq_);
 }
 
 async::result<PollSignalResult>
-SignalContext::pollSignal(uint64_t in_seq, uint64_t mask,
-		async::cancellation_token cancellation) {
-	assert(in_seq <= _currentSeq);
+Process::pollSignal(uint64_t in_seq, uint64_t mask, async::cancellation_token cancellation) {
+	assert(in_seq <= threadGroup()->currentSignalSeq_);
 
-	while(in_seq == _currentSeq && !cancellation.is_cancellation_requested())
-		co_await _signalBell.async_wait(cancellation);
+	auto threadSignalUnavailable = [&]() {
+		if (in_seq == threadGroup()->currentSignalSeq_)
+			return true;
+		if (!(signalQueue.activeSet_ & mask))
+			return true;
+		return false;
+	};
 
-	// Wait until one of the requested signals becomes active.
-	while(!(_activeSet & mask) && !cancellation.is_cancellation_requested())
-		co_await _signalBell.async_wait(cancellation);
+	auto processSignalUnavailable = [&]() {
+		if (in_seq == threadGroup()->currentSignalSeq_)
+			return true;
+		if (!(threadGroup()->signalQueue_.activeSet_ & mask))
+			return true;
+		return false;
+	};
 
-	uint64_t edges = 0;
-	for(int sn = 1; sn <= 64; sn++)
-		if(_slots[sn - 1].raiseSeq > in_seq)
-			edges |= UINT64_C(1) << (sn - 1);
-
-	co_return PollSignalResult{_currentSeq, edges};
-}
-
-CheckSignalResult SignalContext::checkSignal() {
-	return CheckSignalResult(_currentSeq, _activeSet);
-}
-
-async::result<SignalItem *> SignalContext::fetchSignal(uint64_t mask, bool nonBlock, async::cancellation_token ct) {
-	int sn;
-	while(true) {
-		for(sn = 1; sn <= 64; sn++) {
-			if(!(mask & (UINT64_C(1) << (sn - 1))))
-				continue;
-			if(!_slots[sn - 1].asyncQueue.empty())
-				break;
-		}
-		if(sn - 1 != 64)
-			break;
-		if(nonBlock)
-			co_return nullptr;
-		if (!co_await _signalBell.async_wait(ct))
-			co_return nullptr;
+	while (threadSignalUnavailable() && processSignalUnavailable()
+	       && !cancellation.is_cancellation_requested()) {
+		co_await async::race_and_cancel(
+		    [&](auto c) {
+			    return async::transform(
+			        signalQueue.signalBell_.async_wait_if(threadSignalUnavailable, c), [](auto) {}
+			    );
+		    },
+		    [&](auto c) {
+			    return async::transform(
+			        threadGroup()->signalQueue_.signalBell_.async_wait_if(
+			            processSignalUnavailable, c
+			        ),
+			        [](auto) {}
+			    );
+		    },
+		    [&](auto c) {
+			    return async::suspend_indefinitely(c, cancellation);
+		    }
+		);
 	}
 
-	assert(!_slots[sn - 1].asyncQueue.empty());
-	auto item = _slots[sn - 1].asyncQueue.front();
-	_slots[sn - 1].asyncQueue.pop_front();
-	if(_slots[sn - 1].asyncQueue.empty())
-		_activeSet &= ~(UINT64_C(1) << (sn - 1));
+	uint64_t edges = 0;
+	for(int sn = 1; sn <= 64; sn++) {
+		if (signalQueue.slots_[sn - 1].raiseSeq > in_seq)
+			edges |= UINT64_C(1) << (sn - 1);
+		else if (threadGroup()->signalQueue().slots_[sn - 1].raiseSeq > in_seq)
+			edges |= UINT64_C(1) << (sn - 1);
+	}
 
-	co_return item;
+	co_return PollSignalResult{threadGroup()->currentSignalSeq_, edges & mask};
+}
+
+CheckSignalResult Process::checkSignal() {
+	return CheckSignalResult(threadGroup()->currentSignalSeq_, signalQueue.activeSet_ | threadGroup()->signalQueue_.activeSet_);
+}
+
+SignalItem * Process::tryFetchSignal(uint64_t mask) {
+	for(int sn = 1; sn <= 64; sn++) {
+		if(!(mask & (UINT64_C(1) << (sn - 1))))
+			continue;
+
+		// is there a pending signal on the thread queue?
+		if(!signalQueue.slots_[sn - 1].asyncQueue.empty()) {
+			auto item = signalQueue.slots_[sn - 1].asyncQueue.front();
+			signalQueue.slots_[sn - 1].asyncQueue.pop_front();
+			if(signalQueue.slots_[sn - 1].asyncQueue.empty())
+				signalQueue.activeSet_ &= ~(UINT64_C(1) << (sn - 1));
+			return item;
+		}
+
+		// is there a pending signal on the process queue?
+		if(!threadGroup()->signalQueue_.slots_[sn - 1].asyncQueue.empty()) {
+			auto item = threadGroup()->signalQueue_.slots_[sn - 1].asyncQueue.front();
+			threadGroup()->signalQueue_.slots_[sn - 1].asyncQueue.pop_front();
+			if(threadGroup()->signalQueue_.slots_[sn - 1].asyncQueue.empty())
+				threadGroup()->signalQueue_.activeSet_ &= ~(UINT64_C(1) << (sn - 1));
+			return item;
+		}
+	}
+
+	return nullptr;
+}
+
+async::result<SignalItem *> Process::fetchSignal(uint64_t mask, bool nonBlock, async::cancellation_token ct) {
+	auto seq = threadGroup()->currentSignalSeq_;
+
+	while(true) {
+		auto item = tryFetchSignal(mask);
+		if(nonBlock || item)
+			co_return item;
+
+		std::tie(seq, std::ignore) = co_await pollSignal(seq, mask, ct);
+
+		if (ct.is_cancellation_requested())
+			co_return nullptr;
+	}
 }
 
 // We follow a similar model as Linux. The linux layout is a follows:
@@ -1781,7 +1838,7 @@ async::result<void> ThreadGroup::terminateGroup(TerminationState state) {
 		if((*it)->parentDeathSignal_) {
 			UserSignal info;
 			info.pid = hull_->getPid();
-			(*it)->signalContext()->issueSignal((*it)->parentDeathSignal_.value(), info);
+			(*it)->issueThreadGroupSignal((*it)->parentDeathSignal_.value(), info);
 		}
 
 		it = _children.erase(it);
@@ -1825,7 +1882,7 @@ async::result<void> ThreadGroup::terminateGroup(TerminationState state) {
 			std::println("posix: unhandled SIGCHLD reason");
 		}
 
-		parent_->signalContext()->issueSignal(SIGCHLD, info);
+		parent_->issueThreadGroupSignal(SIGCHLD, info);
 	} else {
 		ThreadGroup::retire(this);
 	}
@@ -1904,7 +1961,7 @@ void ProcessGroup::dropProcess(ThreadGroup *process) {
 
 void ProcessGroup::issueSignalToGroup(int sn, SignalInfo info) {
 	for(auto processRef : members_)
-		processRef->signalContext()->issueSignal(sn, info);
+		processRef->issueThreadGroupSignal(sn, info);
 }
 
 bool ProcessGroup::isOrphaned() {

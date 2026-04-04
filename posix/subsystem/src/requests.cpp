@@ -617,7 +617,7 @@ async::result<void> serveRequests(std::shared_ptr<Process> self,
 					self->delayedSignalHandling = std::nullopt;
 				}
 
-				while (co_await self->threadGroup()->signalContext()->fetchSignal(1 << (signo - 1), true));
+				while (co_await self->fetchSignal(1 << (signo - 1), true) != nullptr);
 			};
 
 			std::set<int> defaultIgnoredSignals = {SIGCHLD, SIGURG, SIGWINCH};

@@ -374,7 +374,7 @@ async::result<void> handlePidfdSendSignal(RequestContext& ctx) {
 	UserSignal info;
 	info.pid = ctx.self->pid();
 	info.uid = 0;
-	target->signalContext()->issueSignal(req->signal(), info);
+	target->issueThreadGroupSignal(req->signal(), info);
 
 	managarm::posix::PidfdSendSignalResponse resp;
 	resp.set_error(managarm::posix::Errors::SUCCESS);
