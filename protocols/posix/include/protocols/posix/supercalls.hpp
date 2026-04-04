@@ -28,4 +28,11 @@ struct superCloneArgs {
 	uint64_t flags = 0;
 };
 
+enum class SuperKillMode {
+	// Arguments to superSigKill: SuperKillMode::Kill, pid, tid, signo
+	Kill,
+	// Arguments to superSigKill: SuperKillMode::QueueInfo, pid, tid, siginfo
+	QueueInfo,
+};
+
 } // namespace posix

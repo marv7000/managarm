@@ -232,6 +232,7 @@ struct UserSignal {
 	int pid = 0;
 	int uid = 0;
 	int code = SI_USER;
+	int err_no = 0;
 	sigval val = { .sival_ptr = nullptr };
 };
 

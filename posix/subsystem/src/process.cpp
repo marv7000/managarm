@@ -504,6 +504,7 @@ void FileContext::closeOnExec() {
 
 void CompileSignalInfo::operator() (const UserSignal &info) const {
 	si->si_code = info.code;
+	si->si_errno = info.err_no;
 	si->si_pid = info.pid;
 	si->si_uid = info.uid;
 	si->si_value = info.val;
@@ -511,6 +512,7 @@ void CompileSignalInfo::operator() (const UserSignal &info) const {
 
 void CompileSignalFdInfo::operator() (const UserSignal &info) const {
 	si->ssi_code = info.code;
+	si->ssi_errno = info.err_no;
 	si->ssi_pid = info.pid;
 	si->ssi_uid = info.uid;
 	si->ssi_ptr = reinterpret_cast<uintptr_t>(info.val.sival_ptr);

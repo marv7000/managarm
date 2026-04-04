@@ -386,63 +386,114 @@ async::result<void> observeThread(std::shared_ptr<Process> self,
 
 			uintptr_t gprs[kHelNumGprs];
 			HEL_CHECK(helLoadRegisters(thread.getHandle(), kHelRegsGeneral, &gprs));
-			auto pid = (intptr_t)gprs[kHelRegArg0];
-			int sn = gprs[kHelRegArg1];
-			int sicode = gprs[kHelRegArg2];
-			sigval sival = { .sival_ptr = reinterpret_cast<void *>(gprs[kHelRegArg3]) };
-
-			std::shared_ptr<Process> target;
-			std::shared_ptr<ProcessGroup> targetGroup;
-			if(!pid) {
-				if(logSignals)
-					std::cout << "posix: SIG_KILL on PGRP " << self->pid()
-						<< " (self)" << std::endl;
-				targetGroup = self->pgPointer();
-			} else if(pid == -1) {
-				std::cout << "posix: SIG_KILL(-1) is ignored!" << std::endl;
-				HEL_CHECK(helResume(thread.getHandle()));
-				continue;
-			} else if(pid > 0) {
-				if(logSignals)
-					std::cout << "posix: SIG_KILL on PID " << pid << std::endl;
-				target = Process::findProcess(pid);
-			} else {
-				if(logSignals)
-					std::cout << "posix: SIG_KILL on PGRP " << -pid << std::endl;
-				targetGroup = ProcessGroup::findProcessGroup(-pid);
-			}
-
-			std::array permittedSiCodes = {
-				SI_USER,
-				SI_QUEUE,
-			};
+			auto mode = posix::SuperKillMode(gprs[kHelRegArg0]);
 
 			gprs[kHelRegError] = 0;
 			gprs[kHelRegOut0] = 0;
-			if(!target && !targetGroup) {
-				gprs[kHelRegOut0] = ESRCH;
+
+			if (mode != posix::SuperKillMode::Kill && mode != posix::SuperKillMode::QueueInfo) {
+				gprs[kHelRegOut0] = EINVAL;
 				HEL_CHECK(helStoreRegisters(thread.getHandle(), kHelRegsGeneral, &gprs));
 				HEL_CHECK(helResume(thread.getHandle()));
 				continue;
-			} else if (!std::ranges::contains(permittedSiCodes, sicode)) {
+			}
+
+			auto tgid = (intptr_t) gprs[kHelRegArg1];
+			auto tid = (intptr_t) gprs[kHelRegArg2];
+
+			UserSignal si;
+			int sn = 0;
+
+			if (mode == posix::SuperKillMode::Kill) {
+				sn = gprs[kHelRegArg3];
+
+				si.pid = self->pid();
+				si.uid = self->threadGroup()->uid();
+				si.code = tgid ? SI_TKILL : SI_USER;
+			} else {
+				assert(mode == posix::SuperKillMode::QueueInfo);
+
+				siginfo_t info{};
+				auto load = co_await helix_ng::readMemory(
+					self->vmContext()->getSpace(), gprs[kHelRegArg3], sizeof(info), &info
+				);
+				HEL_CHECK(load.error());
+
+				if (tgid != self->pid()) {
+					// These restrictions only apply if the signal is sent to any other process.
+					if (info.si_code >= 0 || info.si_code == SI_TKILL) {
+						gprs[kHelRegOut0] = EPERM;
+						HEL_CHECK(helStoreRegisters(thread.getHandle(), kHelRegsGeneral, &gprs));
+						HEL_CHECK(helResume(thread.getHandle()));
+						continue;
+					}
+				}
+
+				sn = info.si_signo;
+				si.code = info.si_code;
+				si.err_no = info.si_errno;
+				si.pid = info.si_pid;
+				si.uid = info.si_uid;
+				si.val = info.si_value;
+			}
+
+			std::shared_ptr<ProcessGroup> targetProcessGroup;
+			std::shared_ptr<ThreadGroup> targetThreadGroup;
+			std::shared_ptr<Process> targetThread;
+
+			if (!tgid) {
+				if(logSignals)
+					std::println("posix: SIG_KILL on PGRP {} (self)", self->pid());
+				targetProcessGroup = self->pgPointer();
+				if (!targetProcessGroup) {
+					gprs[kHelRegOut0] = ESRCH;
+					HEL_CHECK(helStoreRegisters(thread.getHandle(), kHelRegsGeneral, &gprs));
+					HEL_CHECK(helResume(thread.getHandle()));
+					continue;
+				}
+			} else if (tgid == -1) {
+				std::println("posix: SIG_KILL(-1) is ignored!");
 				gprs[kHelRegOut0] = EPERM;
 				HEL_CHECK(helStoreRegisters(thread.getHandle(), kHelRegsGeneral, &gprs));
 				HEL_CHECK(helResume(thread.getHandle()));
 				continue;
+			} else if (tgid > 0) {
+				targetThreadGroup = ThreadGroup::findThreadGroup(tgid);
+				if (!targetThreadGroup) {
+					gprs[kHelRegOut0] = ESRCH;
+					HEL_CHECK(helStoreRegisters(thread.getHandle(), kHelRegsGeneral, &gprs));
+					HEL_CHECK(helResume(thread.getHandle()));
+					continue;
+				}
+
+				if (tid) {
+					targetThread = targetThreadGroup->findThread(tid);
+					if (!targetThread) {
+						gprs[kHelRegOut0] = ESRCH;
+						HEL_CHECK(helStoreRegisters(thread.getHandle(), kHelRegsGeneral, &gprs));
+						HEL_CHECK(helResume(thread.getHandle()));
+						continue;
+					}
+				}
+			} else {
+				if(logSignals)
+					std::println("posix: SIG_KILL on PGRP {} (self)", -tgid);
+				targetProcessGroup = ProcessGroup::findProcessGroup(-tgid);
+				if (!targetProcessGroup) {
+					gprs[kHelRegOut0] = ESRCH;
+					HEL_CHECK(helStoreRegisters(thread.getHandle(), kHelRegsGeneral, &gprs));
+					HEL_CHECK(helResume(thread.getHandle()));
+					continue;
+				}
 			}
 
 			HEL_CHECK(helStoreRegisters(thread.getHandle(), kHelRegsGeneral, &gprs));
-			UserSignal info;
-			info.pid = self->pid();
-			info.uid = self->threadGroup()->uid();
-			info.code = sicode;
-			info.val = sival;
 
 			if(sn) {
-				if(targetGroup) {
-					targetGroup->issueSignalToGroup(sn, info);
+				if(targetProcessGroup) {
+					targetProcessGroup->issueSignalToGroup(sn, si);
 				} else {
-					target->threadGroup()->signalContext()->issueSignal(sn, info);
+					targetThreadGroup->signalContext()->issueSignal(sn, si);
 				}
 			}
 
