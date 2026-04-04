@@ -980,6 +980,10 @@ PidHull::~PidHull() {
 	globalPidMap.erase(it);
 }
 
+void PidHull::initializeThreadGroup(ThreadGroup *tg) {
+	threadGroup_ = tg->weak_from_this();
+}
+
 void PidHull::initializeProcess(Process *process) {
 	process_ = process->weak_from_this();
 }
@@ -994,6 +998,10 @@ void PidHull::initializeProcessGroup(ProcessGroup *group) {
 	processGroup_ = group->weak_from_this();
 }
 
+std::shared_ptr<ThreadGroup> PidHull::getThreadGroup() {
+	return threadGroup_.lock();
+}
+
 std::shared_ptr<Process> PidHull::getProcess() {
 	return process_.lock();
 }
@@ -1004,6 +1012,13 @@ std::shared_ptr<ProcessGroup> PidHull::getProcessGroup() {
 
 std::shared_ptr<TerminalSession> PidHull::getTerminalSession() {
 	return terminalSession_.lock();
+}
+
+std::shared_ptr<ThreadGroup> ThreadGroup::findThreadGroup(ProcessId pid) {
+	auto it = globalPidMap.find(pid);
+	if(it == globalPidMap.end())
+		return nullptr;
+	return it->second->getThreadGroup();
 }
 
 std::shared_ptr<Process> Process::findProcess(ProcessId pid) {
@@ -1244,6 +1259,7 @@ async::result<std::shared_ptr<ThreadGroup>> Process::init(std::string path) {
 			nullptr, 0, 0x1000, kHelMapProtRead,
 			&process->_clientClkTrackerPage));
 
+	process->getTidHull()->initializeThreadGroup(threadGroup.get());
 	process->getTidHull()->initializeProcess(process.get());
 
 	// TODO: Do not pass an empty argument vector?
@@ -1261,7 +1277,7 @@ async::result<std::shared_ptr<ThreadGroup>> Process::init(std::string path) {
 	process->_clientAuxBegin = execResult.auxBegin;
 	process->_clientAuxEnd = execResult.auxEnd;
 	process->_posixLane = std::move(server_lane);
-	process->_didExecute = true;
+	process->threadGroup()->didExecute_ = true;
 
 	HEL_CHECK(helGetCredentials(process->_threadDescriptor.getHandle(), 0, process->credentials_.data()));
 
@@ -1327,8 +1343,8 @@ async::result<std::shared_ptr<Process>> Process::fork(std::shared_ptr<Process> o
 	process->threadGroup()->_euid = original->threadGroup()->_euid;
 	process->threadGroup()->_gid = original->threadGroup()->_gid;
 	process->threadGroup()->_egid = original->threadGroup()->_egid;
-	process->getTidHull()->initializeProcess(process.get());
-	process->_didExecute = false;
+	process->getTidHull()->initializeThreadGroup(threadGroup);
+	process->threadGroup()->didExecute_ = false;
 
 	auto procfs_root = std::static_pointer_cast<procfs::DirectoryNode>(getProcfs()->getTarget());
 	process->procfsTaskLink_ = procfs_root->createProcTaskDirectory(process.get());
@@ -1378,8 +1394,9 @@ Process::clone(std::shared_ptr<Process> original, void *ip, void *sp, posix::sup
 		threadGroup = original->tgPointer_.get();
 	} else {
 		auto pidHull = std::make_shared<PidHull>(nextPid++);
-		threadGroup = ThreadGroup::create(pidHull, parentPtr);
+		threadGroup = ThreadGroup::create(std::move(pidHull), parentPtr);
 		original->pgPointer()->reassociateProcess(threadGroup);
+		threadGroup->getHull()->initializeThreadGroup(threadGroup);
 	}
 
 	auto tidHull = std::make_shared<PidHull>(nextPid++);
@@ -1458,7 +1475,7 @@ Process::clone(std::shared_ptr<Process> original, void *ip, void *sp, posix::sup
 	process->getTidHull()->initializeProcess(process.get());
 	process->threadGroup()->associateProcess(process);
 
-	process->_didExecute = false;
+	process->threadGroup()->didExecute_ = false;
 
 	auto procfs_root = std::static_pointer_cast<procfs::DirectoryNode>(getProcfs()->getTarget());
 	process->procfsTaskLink_ = procfs_root->createProcTaskDirectory(process.get());
@@ -1548,7 +1565,7 @@ async::result<Error> Process::exec(std::shared_ptr<Process> process,
 	process->_clientClkTrackerPage = exec_clk_tracker_page;
 	process->_clientAuxBegin = execResult.auxBegin;
 	process->_clientAuxEnd = execResult.auxEnd;
-	process->_didExecute = true;
+	process->threadGroup()->didExecute_ = true;
 	HEL_CHECK(helGetCredentials(process->_threadDescriptor.getHandle(), 0, process->credentials_.data()));
 
 	auto generation = std::make_shared<Generation>();

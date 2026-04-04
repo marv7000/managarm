@@ -786,10 +786,10 @@ public:
 			if(!pid) {
 				result = -ENODATA;
 			} else {
-				auto remoteProc = Process::findProcess(pid);
+				auto remoteProc = ThreadGroup::findThreadGroup(pid);
 
 				if(remoteProc) {
-					auto pidfd = createPidfdFile(remoteProc->threadGroup()->weak_from_this(), false);
+					auto pidfd = createPidfdFile(remoteProc->weak_from_this(), false);
 					result = process->fileContext()->attachFile(pidfd).value_or(-EMFILE);
 				} else {
 					result = -ENODATA;
