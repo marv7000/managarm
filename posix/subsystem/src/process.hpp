@@ -232,6 +232,7 @@ struct UserSignal {
 	int pid = 0;
 	int uid = 0;
 	int code = SI_USER;
+	int err_no = 0;
 	sigval val = { .sival_ptr = nullptr };
 };
 
@@ -508,16 +509,19 @@ struct PidHull : std::enable_shared_from_this<PidHull> {
 		return pid_;
 	}
 
+	void initializeThreadGroup(ThreadGroup *tg);
 	void initializeProcess(Process *process);
 	void initializeProcessGroup(ProcessGroup *group);
 	void initializeTerminalSession(TerminalSession *session);
 
+	std::shared_ptr<ThreadGroup> getThreadGroup();
 	std::shared_ptr<Process> getProcess();
 	std::shared_ptr<ProcessGroup> getProcessGroup();
 	std::shared_ptr<TerminalSession> getTerminalSession();
 
 private:
 	pid_t pid_;
+	std::weak_ptr<ThreadGroup> threadGroup_;
 	std::weak_ptr<Process> process_;
 	std::weak_ptr<ProcessGroup> processGroup_;
 	std::weak_ptr<TerminalSession> terminalSession_;
@@ -551,10 +555,6 @@ public:
 	PidHull *getTidHull();
 	int pid();
 	int tid();
-
-	bool didExecute() {
-		return _didExecute;
-	}
 
 	std::string path() {
 		return _path;
@@ -685,7 +685,6 @@ public:
 
 private:
 	std::shared_ptr<PidHull> hull_;
-	bool _didExecute;
 	std::string _path;
 	std::string _name;
 	helix::UniqueLane _posixLane;
@@ -745,6 +744,10 @@ struct ThreadGroup : std::enable_shared_from_this<ThreadGroup> {
 		return hull_->getPid();
 	}
 
+	bool didExecute() {
+		return didExecute_;
+	}
+
 	ThreadGroup *getParent() {
 		return parent_;
 	}
@@ -758,6 +761,7 @@ struct ThreadGroup : std::enable_shared_from_this<ThreadGroup> {
 
 	SignalContext *signalContext() { return _signalContext.get(); }
 
+	static std::shared_ptr<ThreadGroup> findThreadGroup(ProcessId pid);
 	std::shared_ptr<Process> findThread(pid_t tid);
 
 	Error setUid(int uid) {
@@ -954,6 +958,8 @@ private:
 	std::shared_ptr<PidHull> hull_;
 
 	std::shared_ptr<SignalContext> _signalContext;
+
+	bool didExecute_ = false;
 
 	std::shared_ptr<ProcessGroup> pgPointer_;
 	frg::default_list_hook<ThreadGroup> pgHook_;

@@ -33,6 +33,9 @@ public:
 
 	int pid() const;
 
+	// The returned shared_ptr may be null if the ThreadGroup is already dead.
+	std::shared_ptr<ThreadGroup> threadGroup();
+
 	bool nonBlock() const {
 		return nonBlock_;
 	}

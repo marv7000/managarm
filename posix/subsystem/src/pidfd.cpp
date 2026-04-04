@@ -85,6 +85,10 @@ int OpenFile::pid() const {
 	return p->pid();
 }
 
+std::shared_ptr<ThreadGroup> OpenFile::threadGroup() {
+	return process_.lock();
+}
+
 } // namespace pidfd
 
 smarter::shared_ptr<File, FileHandle> createPidfdFile(std::weak_ptr<ThreadGroup> proc, bool nonBlock) {

@@ -324,13 +324,13 @@ async::result<void> handlePidfdOpen(RequestContext& ctx) {
 		co_return;
 	}
 
-	auto proc = Process::findProcess(req->pid());
+	auto proc = ThreadGroup::findThreadGroup(req->pid());
 	if(!proc) {
 		co_await sendErrorResponse<managarm::posix::PidfdOpenResponse>(ctx, managarm::posix::Errors::ILLEGAL_ARGUMENTS);
 		co_return;
 	}
 
-	auto pidfd = createPidfdFile(proc->threadGroup()->weak_from_this(), req->flags() & PIDFD_NONBLOCK);
+	auto pidfd = createPidfdFile(proc->weak_from_this(), req->flags() & PIDFD_NONBLOCK);
 	auto fd = ctx.self->fileContext()->attachFile(pidfd, req->flags() & PIDFD_NONBLOCK);
 
 	managarm::posix::PidfdOpenResponse resp;
@@ -365,13 +365,7 @@ async::result<void> handlePidfdSendSignal(RequestContext& ctx) {
 		co_return;
 	}
 
-	auto pid = smarter::static_pointer_cast<pidfd::OpenFile>(fd)->pid();
-	if(pid <= 0) {
-		co_await sendErrorResponse<managarm::posix::PidfdSendSignalResponse>(ctx, managarm::posix::Errors::NO_SUCH_RESOURCE);
-		co_return;
-	}
-
-	auto target = Process::findProcess(pid);
+	auto target = smarter::static_pointer_cast<pidfd::OpenFile>(fd)->threadGroup();
 	if(!target) {
 		co_await sendErrorResponse<managarm::posix::PidfdSendSignalResponse>(ctx, managarm::posix::Errors::NO_SUCH_RESOURCE);
 		co_return;
@@ -380,7 +374,7 @@ async::result<void> handlePidfdSendSignal(RequestContext& ctx) {
 	UserSignal info;
 	info.pid = ctx.self->pid();
 	info.uid = 0;
-	target->threadGroup()->signalContext()->issueSignal(req->signal(), info);
+	target->signalContext()->issueSignal(req->signal(), info);
 
 	managarm::posix::PidfdSendSignalResponse resp;
 	resp.set_error(managarm::posix::Errors::SUCCESS);

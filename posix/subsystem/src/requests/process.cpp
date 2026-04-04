@@ -121,12 +121,12 @@ async::result<void> handleSetAffinity(RequestContext& ctx) {
 
 	if(ctx.self->pid() != req->pid()) {
 		// TODO: permission checking
-		auto target_process = ctx.self->findProcess(req->pid());
-		if(target_process == nullptr) {
+		auto target = Process::findProcess(req->pid());
+		if(!target) {
 			co_await sendErrorResponse(ctx, managarm::posix::Errors::ILLEGAL_ARGUMENTS);
 			co_return;
 		}
-		handle = target_process->threadDescriptor().getHandle();
+		handle = target->threadDescriptor().getHandle();
 	}
 
 	HelError e = helSetAffinity(handle, req->mask().data(), req->mask().size());
@@ -172,12 +172,12 @@ async::result<void> handleGetAffinity(RequestContext& ctx) {
 
 	if(req->pid() && ctx.self->pid() != req->pid()) {
 		// TODO: permission checking
-		auto target_process = ctx.self->findProcess(req->pid());
-		if(target_process == nullptr) {
+		auto target = Process::findProcess(req->pid());
+		if(!target) {
 			co_await sendErrorResponse(ctx, managarm::posix::Errors::ILLEGAL_ARGUMENTS);
 			co_return;
 		}
-		handle = target_process->threadDescriptor().getHandle();
+		handle = target->threadDescriptor().getHandle();
 	}
 
 	size_t actual_size;
@@ -217,15 +217,15 @@ async::result<void> handleGetPgid(RequestContext& ctx) {
 
 	logRequest(logRequests, ctx, "GET_PGID");
 
-	std::shared_ptr<Process> target;
+	std::shared_ptr<ThreadGroup> target = nullptr;
 	if(req->pid()) {
-		target = Process::findProcess(req->pid());
+		target = ThreadGroup::findThreadGroup(req->pid());
 		if(!target) {
 			co_await sendErrorResponse(ctx, managarm::posix::Errors::NO_SUCH_RESOURCE);
 			co_return;
 		}
 	} else {
-		target = ctx.self;
+		target = ctx.self->threadGroup()->shared_from_this();
 	}
 
 	managarm::posix::SvrResponse resp;
@@ -252,14 +252,14 @@ async::result<void> handleSetPgid(RequestContext& ctx) {
 
 	logRequest(logRequests, ctx, "SET_PGID");
 
-	std::shared_ptr<Process> target;
+	std::shared_ptr<ThreadGroup> target;
 
 	if (req->pgid() < 0) {
 		// POSIX: reject negative `pgid` (or implementation-unsupported) values with EINVAL
 		co_await sendErrorResponse(ctx, managarm::posix::Errors::ILLEGAL_ARGUMENTS);
 		co_return;
 	} else if (req->pid() > 0) {
-		target = Process::findProcess(req->pid());
+		target = ThreadGroup::findThreadGroup(req->pid());
 		if (!target) {
 			co_await sendErrorResponse(ctx, managarm::posix::Errors::NO_SUCH_RESOURCE);
 			co_return;
@@ -287,7 +287,7 @@ async::result<void> handleSetPgid(RequestContext& ctx) {
 			co_return;
 		}
 	} else {
-		target = ctx.self;
+		target = ctx.self->threadGroup()->shared_from_this();
 	}
 
 	// POSIX: We can't change the process group ID of the session leader, EPERM
@@ -302,11 +302,11 @@ async::result<void> handleSetPgid(RequestContext& ctx) {
 
 	if(group) {
 		// Found, do permission checking and join
-		group->reassociateProcess(target->threadGroup());
+		group->reassociateProcess(target.get());
 	} else {
 		// Not found, making it if pgid and pid match, or if pgid is 0, indicating that we should make one
 		if(target->pid() == req->pgid() || !req->pgid()) {
-			target->pgPointer()->getSession()->spawnProcessGroup(target->threadGroup());
+			target->pgPointer()->getSession()->spawnProcessGroup(target.get());
 		} else {
 			// POSIX: invalid `pgid` supplied, return EINVAL.
 			co_await sendErrorResponse(ctx, managarm::posix::Errors::ILLEGAL_ARGUMENTS);
@@ -341,15 +341,15 @@ async::result<void> handleGetSid(RequestContext& ctx) {
 
 	logRequest(logRequests, ctx, "GET_SID", "pid={}", req->pid());
 
-	std::shared_ptr<Process> target;
+	std::shared_ptr<ThreadGroup> target;
 	if(req->pid()) {
-		target = Process::findProcess(req->pid());
+		target = ThreadGroup::findThreadGroup(req->pid());
 		if(!target) {
 			co_await sendErrorResponse(ctx, managarm::posix::Errors::NO_SUCH_RESOURCE);
 			co_return;
 		}
 	} else {
-		target = ctx.self;
+		target = ctx.self->threadGroup()->shared_from_this();
 	}
 	managarm::posix::SvrResponse resp;
 	resp.set_error(managarm::posix::Errors::SUCCESS);
