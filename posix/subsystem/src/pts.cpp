@@ -879,10 +879,17 @@ MasterFile::readSome(Process *, void *data, size_t maxLength, async::cancellatio
 	if(!maxLength)
 		co_return std::unexpected{Error::eof};
 
+	// Linux emits EIO if there are no slaves.
+	// This takes precedence over EAGAIN.
+	if (_channel->masterQueue.empty() && !_channel->slaveCount)
+		co_return std::unexpected{Error::ioError};
+
 	if (_channel->masterQueue.empty() && _nonBlocking)
 		co_return std::unexpected{Error::wouldBlock};
 
 	while (_channel->masterQueue.empty()) {
+		if (!_channel->slaveCount)
+			co_return std::unexpected{Error::ioError};
 		if (!co_await _channel->statusBell.async_wait(ce))
 			co_return std::unexpected{Error::interrupted};
 	}
