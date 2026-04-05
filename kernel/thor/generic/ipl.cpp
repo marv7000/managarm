@@ -2,6 +2,7 @@
 #include <thor-internal/arch-generic/ints.hpp>
 #include <thor-internal/debug.hpp>
 #include <thor-internal/ipl.hpp>
+#include <thor-internal/schedule.hpp>
 
 namespace thor {
 
@@ -54,10 +55,11 @@ void handleIplDeferred(Ipl current, Ipl ceiling) {
 		// Note: during this switch, the currentIpl() is not necessarily l.
 		// If handlers rely on running at a certain IPL, they need to raise it.
 		switch (l) {
-			case ipl::schedule:
-				// TODO: Instead of sending a ping IPI, we can also schedule here.
-				sendPingIpi(cpuData);
+			case ipl::schedule: {
+				StatelessIrqLock irqLock;
+				localScheduler.get().checkPreemption();
 				break;
+			}
 			default:
 				// Nothing to do.
 		}

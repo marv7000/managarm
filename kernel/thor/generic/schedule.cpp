@@ -39,6 +39,7 @@ namespace {
 		}
 
 		void handlePreemption(IrqImageAccessor image) override {
+			assert(!image.inUserMode());
 			auto *scheduler = &localScheduler.get();
 			scheduler->update();
 			if(scheduler->maybeReschedule()) {
@@ -46,6 +47,19 @@ namespace {
 					scrubStack(image, cont);
 					localScheduler.get().commitReschedule();
 				}, getCpuData()->detachedStack.base(), image);
+			}else{
+				scheduler->renewSchedule();
+			}
+		}
+
+		void handlePreemption() override {
+			StatelessIrqLock irqLock;
+			auto *scheduler = &localScheduler.get();
+			scheduler->update();
+			if(scheduler->maybeReschedule()) {
+				runOnStack([] (Continuation) {
+					localScheduler.get().commitReschedule();
+				}, getCpuData()->detachedStack.base());
 			}else{
 				scheduler->renewSchedule();
 			}
@@ -472,10 +486,17 @@ void doCheckThreadPreemption(ImageAccessor image) {
 
 } // namespace
 
-void checkThreadPreemption(FaultImageAccessor image) {
-	doCheckThreadPreemption(image);
+void checkThreadPreemption() {
+	assert(!intsAreEnabled());
+	auto thisThread = getCurrentThread();
+	auto *scheduler = &localScheduler.get();
+
+	scheduler->suppressRenewalUntilInterrupt();
+	if (!scheduler->mustCallPreemption())
+		return;
+	thisThread->handlePreemption();
 }
-void checkThreadPreemption(SyscallImageAccessor image) {
+void checkThreadPreemption(FaultImageAccessor image) {
 	doCheckThreadPreemption(image);
 }
 

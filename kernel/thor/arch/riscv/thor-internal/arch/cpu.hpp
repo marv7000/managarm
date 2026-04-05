@@ -99,7 +99,7 @@ struct FaultImageAccessor {
 	Word *ip() { return &frame()->ip; }
 	Word *sp() { unimplementedOnRiscv(); }
 
-	bool inKernelDomain() { return !frame()->umode(); }
+	bool inUserMode() { return frame()->umode(); }
 
 	bool allowUserPages() { return frame()->sstatus & riscv::sstatus::sumBit; }
 
@@ -121,15 +121,9 @@ struct IrqImageAccessor {
 	Word *ip() { unimplementedOnRiscv(); }
 	Word *rflags() { unimplementedOnRiscv(); }
 
-	bool inPreemptibleDomain() { return frame()->umode() || frame()->sie(); }
+	bool intsEnabled() { return frame()->umode() || frame()->sie(); }
 
-	bool inManipulableDomain() { return frame()->umode(); }
-
-	bool inThreadDomain() { unimplementedOnRiscv(); }
-
-	bool inFiberDomain() { unimplementedOnRiscv(); }
-
-	bool inIdleDomain() { unimplementedOnRiscv(); }
+	bool inUserMode() { return frame()->umode(); }
 
 	IplState *iplState() { return &frame()->iplState; }
 
@@ -193,7 +187,6 @@ struct Executor {
 	friend void saveExecutor(Executor *executor, IrqImageAccessor accessor);
 	friend void saveExecutor(Executor *executor, SyscallImageAccessor accessor);
 	friend void saveCurrentSimdState(Executor *executor);
-	friend void workOnExecutor(Executor *executor);
 	friend void restoreExecutor(Executor *executor);
 
 	static size_t determineSize() { return sizeof(Frame) + fpStateSize; }

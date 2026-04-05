@@ -120,8 +120,8 @@ struct FaultImageAccessor {
 
 	IplState *iplState() { return &_frame()->iplState; }
 
-	bool inKernelDomain() {
-		return (_frame()->spsr & 0b1111) != 0b0000;
+	bool inUserMode() {
+		return (_frame()->spsr & 0b1111) == 0b0000;
 	}
 
 	bool allowUserPages();
@@ -151,29 +151,12 @@ struct IrqImageAccessor {
 
 	IplState *iplState() { return &_frame()->iplState; }
 
-	bool inPreemptibleDomain() {
-		return ((_frame()->spsr & 0b1111) == 0b0000)
-			|| ((_frame()->spsr & 0x3c0) == 0x000);
-		return true;
+	bool intsEnabled() {
+		return (_frame()->spsr & 0x3c0) == 0x000;
 	}
 
-	bool inThreadDomain() {
-		assert(inPreemptibleDomain());
-		return false;
-	}
-
-	bool inManipulableDomain() {
+	bool inUserMode() {
 		return (_frame()->spsr & 0b1111) == 0b0000;
-	}
-
-	bool inFiberDomain() {
-		assert(inPreemptibleDomain());
-		return false;
-	}
-
-	bool inIdleDomain() {
-		assert(inPreemptibleDomain());
-		return false;
 	}
 
 	void *frameBase() { return _pointer + sizeof(Frame); }
@@ -233,7 +216,6 @@ struct Executor {
 	friend void saveExecutor(Executor *executor, FaultImageAccessor accessor);
 	friend void saveExecutor(Executor *executor, IrqImageAccessor accessor);
 	friend void saveExecutor(Executor *executor, SyscallImageAccessor accessor);
-	friend void workOnExecutor(Executor *executor);
 	friend void restoreExecutor(Executor *executor);
 
 	static size_t determineSize() { return sizeof(ExecutorState); }

@@ -259,6 +259,10 @@ struct StatelessIrqLock {
 		}
 	}
 
+	void release() {
+		_outerIpl = ipl::bad;
+	}
+
 private:
 	Ipl _outerIpl{ipl::bad};
 };

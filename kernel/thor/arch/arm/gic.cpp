@@ -7,6 +7,7 @@
 #include <thor-internal/main.hpp>
 #include <thor-internal/schedule.hpp>
 #include <thor-internal/thread.hpp>
+#include <thor-internal/traps.hpp>
 
 namespace thor {
 
@@ -78,20 +79,22 @@ void handleGicIrq(IrqImageAccessor image, ClaimedExternalIrq irq) {
 			              << frg::endlog;
 		}
 
-		localScheduler.get(cpuData).checkPreemption(image);
-
-		if (image.inManipulableDomain()) {
+		if (image.inUserMode()) {
 			auto thisThread = getCurrentThread();
 			assert(thisThread);
+
+			localScheduler.get(cpuData).checkPreemption();
 
 			if (thisThread->checkConditions()) {
 				iplDemoteContext(ipl::passive);
 				enableInts();
 
-				Thread::handleConditions(image);
-
-				disableInts();
+				StatelessIrqLock irqLock(frg::dont_lock);
+				handleThreadReturnToUserMode(image, irqLock);
+				irqLock.release();
 			}
+		} else {
+			localScheduler.get(cpuData).checkPreemption(image);
 		}
 	} else if (irq.irq >= 1020) {
 		if constexpr (logSpurious) {
@@ -100,6 +103,24 @@ void handleGicIrq(IrqImageAccessor image, ClaimedExternalIrq irq) {
 		}
 	} else {
 		handleIrq(image, irq.pin);
+
+		if (image.inUserMode()) {
+			auto thisThread = getCurrentThread();
+			assert(thisThread);
+
+			localScheduler.get(cpuData).checkPreemption();
+
+			if (thisThread->checkConditions()) {
+				iplDemoteContext(ipl::passive);
+				enableInts();
+
+				StatelessIrqLock irqLock(frg::dont_lock);
+				handleThreadReturnToUserMode(image, irqLock);
+				irqLock.release();
+			}
+		} else {
+			localScheduler.get(cpuData).checkPreemption(image);
+		}
 	}
 }
 

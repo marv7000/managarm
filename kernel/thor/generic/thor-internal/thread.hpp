@@ -266,6 +266,7 @@ public:
 	static void interruptCurrent(Interrupt interrupt, IrqImageAccessor image, InterruptInfo info);
 
 	static void handleConditions(SyscallImageAccessor image);
+	static void handleConditions(FaultImageAccessor image);
 	static void handleConditions(IrqImageAccessor image);
 	static void raiseSignals(SyscallImageAccessor image);
 
@@ -350,10 +351,10 @@ public:
 
 	[[ noreturn ]] void invoke() override;
 
+	void handlePreemption() override;
 	void handlePreemption(IrqImageAccessor image) override;
 	// Non-virtual since syscalls/faults know that they are called from a thread.
 	void handlePreemption(FaultImageAccessor image);
-	void handlePreemption(SyscallImageAccessor image);
 
 	InterruptInfo interruptInfo;
 
@@ -380,7 +381,7 @@ private:
 	static void genericHandleConditions(ImageAccessor image);
 
 	template<typename ImageAccessor>
-	void doHandlePreemption(bool inManipulableDomain, ImageAccessor image);
+	void genericHandlePreemption(ImageAccessor image);
 
 	void raiseCondition_(Condition c);
 
@@ -404,10 +405,6 @@ private:
 		kRunActive,
 
 		// the thread is in the schedule queue but not active on any processor.
-		// it may be killed in this state.
-		kRunSuspended,
-
-		// like kRunSuspended but the thread must not be killed in this state.
 		kRunDeferred,
 
 		// the thread is waiting for progress inside the kernel.

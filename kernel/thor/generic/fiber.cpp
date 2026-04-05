@@ -103,6 +103,32 @@ void KernelFiber::invoke() {
 	restoreExecutor(&_executor);
 }
 
+void KernelFiber::handlePreemption() {
+	assert(!intsAreEnabled());
+	assert(thisFiber() == this);
+
+	auto *scheduler = &localScheduler.get();
+
+	scheduler->update();
+	if(scheduler->maybeReschedule()) {
+		auto lock = frg::guard(&_mutex);
+
+		getCpuData()->executorContext = nullptr;
+		getCpuData()->activeFiber = nullptr;
+
+		forkExecutor([&] {
+			runOnStack([] (Continuation cont, Executor *executor,
+					frg::unique_lock<frg::ticket_spinlock> lock) {
+				scrubStack(executor, cont);
+				lock.unlock();
+				localScheduler.get().commitReschedule();
+			}, getCpuData()->detachedStack.base(), &_executor, std::move(lock));
+		}, &_executor);
+	}else{
+		scheduler->renewSchedule();
+	}
+}
+
 void KernelFiber::handlePreemption(IrqImageAccessor image) {
 	assert(!intsAreEnabled());
 	assert(thisFiber() == this);

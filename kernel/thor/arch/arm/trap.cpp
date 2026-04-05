@@ -10,6 +10,7 @@
 #include <thor-internal/debug.hpp>
 #include <thor-internal/main.hpp>
 #include <thor-internal/thread.hpp>
+#include <thor-internal/traps.hpp>
 
 namespace thor {
 
@@ -180,7 +181,23 @@ extern "C" void onPlatformSyncFault(FaultImageAccessor image) {
 
 	// This syscall/fault may have woken up threads on this CPU.
 	// See Scheduler::resume() for details.
-	checkThreadPreemption(image);
+	if (image.inUserMode()) {
+		auto thisThread = getCurrentThread();
+		assert(thisThread);
+
+		checkThreadPreemption();
+
+		if (thisThread->checkConditions()) {
+			iplDemoteContext(ipl::passive);
+			enableInts();
+
+			StatelessIrqLock irqLock(frg::dont_lock);
+			handleThreadReturnToUserMode(image, irqLock);
+			irqLock.release();
+		}
+	} else {
+		checkThreadPreemption(image);
+	}
 
 	iplLeaveContext(*image.iplState());
 }
@@ -278,16 +295,6 @@ extern "C" void onPlatformIrq(IrqImageAccessor image) {
 	);
 
 	iplLeaveContext(*image.iplState());
-}
-
-extern "C" void onPlatformWork() {
-	assert(!irqMutex().nesting());
-	// TODO: User-access should already be disabled here.
-	disableUserAccess();
-
-	enableInts();
-	getCurrentThread()->mainWorkQueue()->run();
-	disableInts();
 }
 
 } // namespace thor

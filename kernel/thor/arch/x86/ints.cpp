@@ -3,6 +3,7 @@
 #include <thor-internal/ipl.hpp>
 #include <thor-internal/profile.hpp>
 #include <thor-internal/thread.hpp>
+#include <thor-internal/traps.hpp>
 #include <thor-internal/arch-generic/cpu.hpp>
 #include <thor-internal/arch/pmc-amd.hpp>
 #include <thor-internal/arch/pmc-intel.hpp>
@@ -189,7 +190,7 @@ void setupIdt(uint32_t *table) {
 	using common::x86::makeIdt64IntSystemGate;
 	using common::x86::makeIdt64IntUserGate;
 	
-	int fault_selector = kSelExecutorSyscallCode;
+	int fault_selector = kSelKernelCode;
 	makeIdt64IntSystemGate(table, 0, fault_selector, (void *)&faultStubDivideByZero, 0);
 	makeIdt64IntSystemGate(table, 1, fault_selector, (void *)&faultStubDebug, 0);
 	makeIdt64IntUserGate(table, 3, fault_selector, (void *)&faultStubBreakpoint, 0);
@@ -210,7 +211,7 @@ void setupIdt(uint32_t *table) {
 	makeIdt64IntSystemGate(table, 18, fault_selector, (void *)&faultStubMachineCheck, 0);
 	makeIdt64IntSystemGate(table, 19, fault_selector, (void *)&faultStubSimdException, 0);
 
-	int irq_selector = kSelExecutorSyscallCode;
+	int irq_selector = kSelKernelCode;
 	makeIdt64IntSystemGate(table, 39, irq_selector, (void *)&thorRtIsrLegacyIrq7, 0);
 	makeIdt64IntSystemGate(table, 47, irq_selector, (void *)&thorRtIsrLegacyIrq15, 0);
 
@@ -284,7 +285,7 @@ void setupIdt(uint32_t *table) {
 	makeIdt64IntSystemGate(table, 0xF2, irq_selector, (void *)&thorRtIpiCall, 0);
 	makeIdt64IntSystemGate(table, 0xFF, irq_selector, (void *)&thorRtPreemption, 0);
 
-	int nmi_selector = kSelExecutorSyscallCode;
+	int nmi_selector = kSelKernelCode;
 	makeIdt64IntSystemGate(table, 2, nmi_selector, (void *)&nmiStub, 3);
 }
 
@@ -318,7 +319,7 @@ extern "C" void onPlatformFault(FaultImageAccessor image, int number) {
 		panicLogger() << "Fault #" << number
 				<< " in stub section, cs: 0x" << frg::hex_fmt(cs)
 				<< ", ip: " << (void *)*image.ip() << frg::endlog;
-	if(cs != kSelClientUserCode && cs != kSelExecutorSyscallCode)
+	if(cs != kSelUserCode && cs != kSelKernelCode)
 		panicLogger() << "Fault #" << number
 				<< ", from unexpected cs: 0x" << frg::hex_fmt(cs)
 				<< ", ip: " << (void *)*image.ip() << "\n"
@@ -386,7 +387,23 @@ extern "C" void onPlatformFault(FaultImageAccessor image, int number) {
 
 	// This fault may have woken up threads on this CPU.
 	// See Scheduler::resume() for details.
-	checkThreadPreemption(image);
+	if (image.inUserMode()) {
+		auto thisThread = getCurrentThread();
+		assert(thisThread);
+
+		checkThreadPreemption();
+
+		if (thisThread->checkConditions()) {
+			iplDemoteContext(ipl::passive);
+			enableInts();
+
+			StatelessIrqLock irqLock(frg::dont_lock);
+			handleThreadReturnToUserMode(image, irqLock);
+			irqLock.release();
+		}
+	} else {
+		checkThreadPreemption(image);
+	}
 
 	iplLeaveContext(*image.iplState());
 }
@@ -401,12 +418,30 @@ extern "C" void onPlatformIrq(IrqImageAccessor image, int number) {
 				<< ", ip: " << (void *)*image.ip() << frg::endlog;
 
 	uint16_t cs = *image.cs();
-	assert(cs == kSelExecutorSyscallCode || cs == kSelClientUserCode);
+	assert(cs == kSelKernelCode || cs == kSelUserCode);
 
 	assert(!irqMutex().nesting());
 	disableUserAccess();
 
 	handleIrq(image, globalIrqSlots[number]->pin());
+
+	if (image.inUserMode()) {
+		auto thisThread = getCurrentThread();
+		assert(thisThread);
+
+		localScheduler.get().checkPreemption();
+
+		if (thisThread->checkConditions()) {
+			iplDemoteContext(ipl::passive);
+			enableInts();
+
+			StatelessIrqLock irqLock(frg::dont_lock);
+			handleThreadReturnToUserMode(image, irqLock);
+			irqLock.release();
+		}
+	} else {
+		localScheduler.get().checkPreemption(image);
+	}
 
 	iplLeaveContext(*image.iplState());
 }
@@ -421,7 +456,7 @@ extern "C" void onPlatformLegacyIrq(IrqImageAccessor image, int number) {
 				<< ", ip: " << (void *)*image.ip() << frg::endlog;
 
 	uint16_t cs = *image.cs();
-	assert(cs == kSelExecutorSyscallCode || cs == kSelClientUserCode);
+	assert(cs == kSelKernelCode || cs == kSelUserCode);
 
 	assert(!irqMutex().nesting());
 	disableUserAccess();
@@ -452,7 +487,7 @@ extern "C" void onPlatformPreemption(IrqImageAccessor image) {
 				<< "]: Preemption from cs: 0x" << frg::hex_fmt(cs)
 				<< ", ip: " << (void *)*image.ip() << frg::endlog;
 
-	assert(cs == kSelExecutorSyscallCode || cs == kSelClientUserCode);
+	assert(cs == kSelKernelCode || cs == kSelUserCode);
 
 	assert(!irqMutex().nesting());
 	disableUserAccess();
@@ -463,7 +498,23 @@ extern "C" void onPlatformPreemption(IrqImageAccessor image) {
 
 	acknowledgeIrq(0);
 
-	localScheduler.get().checkPreemption(image);
+	if (image.inUserMode()) {
+		auto thisThread = getCurrentThread();
+		assert(thisThread);
+
+		localScheduler.get().checkPreemption();
+
+		if (thisThread->checkConditions()) {
+			iplDemoteContext(ipl::passive);
+			enableInts();
+
+			StatelessIrqLock irqLock(frg::dont_lock);
+			handleThreadReturnToUserMode(image, irqLock);
+			irqLock.release();
+		}
+	} else {
+		localScheduler.get().checkPreemption(image);
+	}
 
 	iplLeaveContext(*image.iplState());
 }
@@ -484,7 +535,21 @@ extern "C" void onPlatformSyscall(SyscallImageAccessor image) {
 
 	// This syscall may have woken up threads on this CPU.
 	// See Scheduler::resume() for details.
-	checkThreadPreemption(image);
+	{
+		auto thisThread = getCurrentThread();
+		assert(thisThread);
+
+		checkThreadPreemption();
+
+		if (thisThread->checkConditions()) {
+			iplDemoteContext(ipl::passive);
+			enableInts();
+
+			StatelessIrqLock irqLock(frg::dont_lock);
+			handleThreadReturnToUserMode(image, irqLock);
+			irqLock.release();
+		}
+	}
 
 	iplLower(ipl::interrupt, ipl::passive);
 }
@@ -499,7 +564,7 @@ extern "C" void onPlatformShootdown(IrqImageAccessor image) {
 				<< ", ip: " << (void *)*image.ip() << frg::endlog;
 
 	uint16_t cs = *image.cs();
-	assert(cs == kSelExecutorSyscallCode || cs == kSelClientUserCode);
+	assert(cs == kSelKernelCode || cs == kSelUserCode);
 
 	assert(!irqMutex().nesting());
 	disableUserAccess();
@@ -511,7 +576,23 @@ extern "C" void onPlatformShootdown(IrqImageAccessor image) {
 
 	acknowledgeIpi();
 
-	localScheduler.get().checkPreemption(image);
+	if (image.inUserMode()) {
+		auto thisThread = getCurrentThread();
+		assert(thisThread);
+
+		localScheduler.get().checkPreemption();
+
+		if (thisThread->checkConditions()) {
+			iplDemoteContext(ipl::passive);
+			enableInts();
+
+			StatelessIrqLock irqLock(frg::dont_lock);
+			handleThreadReturnToUserMode(image, irqLock);
+			irqLock.release();
+		}
+	} else {
+		localScheduler.get().checkPreemption(image);
+	}
 
 	iplLeaveContext(*image.iplState());
 }
@@ -526,7 +607,7 @@ extern "C" void onPlatformPing(IrqImageAccessor image) {
 				<< ", ip: " << (void *)*image.ip() << frg::endlog;
 
 	uint16_t cs = *image.cs();
-	assert(cs == kSelExecutorSyscallCode || cs == kSelClientUserCode);
+	assert(cs == kSelKernelCode || cs == kSelUserCode);
 
 	assert(!irqMutex().nesting());
 	disableUserAccess();
@@ -535,20 +616,23 @@ extern "C" void onPlatformPing(IrqImageAccessor image) {
 
 	auto *scheduler = &localScheduler.get();
 	scheduler->forcePreemptionCall();
-	scheduler->checkPreemption(image);
 
-	if (image.inManipulableDomain()) {
+	if (image.inUserMode()) {
 		auto thisThread = getCurrentThread();
 		assert(thisThread);
+
+		scheduler->checkPreemption();
 
 		if (thisThread->checkConditions()) {
 			iplDemoteContext(ipl::passive);
 			enableInts();
 
-			Thread::handleConditions(image);
-
-			disableInts();
+			StatelessIrqLock irqLock(frg::dont_lock);
+			handleThreadReturnToUserMode(image, irqLock);
+			irqLock.release();
 		}
+	} else {
+		scheduler->checkPreemption(image);
 	}
 
 	iplLeaveContext(*image.iplState());
@@ -564,7 +648,7 @@ extern "C" void onPlatformCall(IrqImageAccessor image) {
 				<< ", ip: " << (void *)*image.ip() << frg::endlog;
 
 	uint16_t cs = *image.cs();
-	assert(cs == kSelExecutorSyscallCode || cs == kSelClientUserCode);
+	assert(cs == kSelKernelCode || cs == kSelUserCode);
 
 	assert(!irqMutex().nesting());
 	disableUserAccess();
@@ -573,24 +657,25 @@ extern "C" void onPlatformCall(IrqImageAccessor image) {
 
 	SelfIntCallBase::runScheduledCalls();
 
-	localScheduler.get().checkPreemption(image);
+	if (image.inUserMode()) {
+		auto thisThread = getCurrentThread();
+		assert(thisThread);
+
+		localScheduler.get().checkPreemption();
+
+		if (thisThread->checkConditions()) {
+			iplDemoteContext(ipl::passive);
+			enableInts();
+
+			StatelessIrqLock irqLock(frg::dont_lock);
+			handleThreadReturnToUserMode(image, irqLock);
+			irqLock.release();
+		}
+	} else {
+		localScheduler.get().checkPreemption(image);
+	}
 
 	iplLeaveContext(*image.iplState());
-}
-
-extern "C" void onPlatformWork() {
-//	if(inStub(*image.ip()))
-//		panicLogger() << "Work interrupt " << number
-//				<< " in stub section, cs: 0x" << frg::hex_fmt(*image.cs())
-//				<< ", ip: " << (void *)*image.ip() << frg::endlog;
-
-	assert(!irqMutex().nesting());
-
-	// Note that user access is disabled here by workOnExecutor().
-
-	enableInts();
-	getCurrentThread()->mainWorkQueue()->run();
-	disableInts();
 }
 
 namespace {

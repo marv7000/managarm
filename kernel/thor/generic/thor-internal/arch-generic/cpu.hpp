@@ -20,7 +20,7 @@ concept ValidFaultImageAccessor = requires(T acc) {
 	{ acc.ip() } -> std::same_as<Word *>;
 	{ acc.sp() } -> std::same_as<Word *>;
 
-	{ acc.inKernelDomain() } -> std::same_as<bool>;
+	{ acc.inUserMode() } -> std::same_as<bool>;
 	{ acc.allowUserPages() } -> std::same_as<bool>;
 };
 static_assert(ValidFaultImageAccessor<FaultImageAccessor>);
@@ -29,11 +29,8 @@ static_assert(ValidFaultImageAccessor<FaultImageAccessor>);
 // Make sure that IrqImageAccessor provides all the generic methods.
 template <typename T>
 concept ValidIrqImageAccessor = requires(T acc) {
-	{ acc.inPreemptibleDomain() } -> std::same_as<bool>;
-	{ acc.inThreadDomain() } -> std::same_as<bool>;
-	{ acc.inManipulableDomain() } -> std::same_as<bool>;
-	{ acc.inFiberDomain() } -> std::same_as<bool>;
-	{ acc.inIdleDomain() } -> std::same_as<bool>;
+	{ acc.intsEnabled() } -> std::same_as<bool>;
+	{ acc.inUserMode() } -> std::same_as<bool>;
 };
 static_assert(ValidIrqImageAccessor<IrqImageAccessor>);
 
@@ -91,11 +88,10 @@ concept ValidExecutor = requires(T *ex,
 	{ ex->arg1() } -> std::same_as<Word *>;
 	{ ex->result0() } -> std::same_as<Word *>;
 	{ ex->result1() } -> std::same_as<Word *>;
-	// Save/restore/work
+	// Save/restore
 	{ saveExecutor(ex, f) } -> std::same_as<void>;
 	{ saveExecutor(ex, i) } -> std::same_as<void>;
 	{ saveExecutor(ex, s) } -> std::same_as<void>;
-	{ workOnExecutor(ex) } -> std::same_as<void>;
 	{ restoreExecutor(ex) } -> std::same_as<void>;
 };
 static_assert(ValidExecutor<Executor>);
@@ -115,10 +111,6 @@ void scrubStack(Executor *executor, Continuation cont);
 void saveExecutor(Executor *executor, FaultImageAccessor accessor);
 void saveExecutor(Executor *executor, IrqImageAccessor accessor);
 void saveExecutor(Executor *executor, SyscallImageAccessor accessor);
-
-// Schedule the executor to run its thread's work queue before resuming.
-void workOnExecutor(Executor *executor);
-
 
 // Validate AssemblyCpuData and PlatformCpuData definitions.
 static_assert(offsetof(AssemblyCpuData, selfPointer) == 0);

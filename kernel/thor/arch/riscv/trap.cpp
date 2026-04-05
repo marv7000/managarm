@@ -4,6 +4,7 @@
 #include <thor-internal/arch/trap.hpp>
 #include <thor-internal/int-call.hpp>
 #include <thor-internal/thread.hpp>
+#include <thor-internal/traps.hpp>
 
 namespace thor {
 
@@ -126,20 +127,22 @@ void handleRiscvIpi(Frame *frame) {
 	if (mask & PlatformCpuData::ipiSelfCall)
 		SelfIntCallBase::runScheduledCalls();
 
-	localScheduler.get(cpuData).checkPreemption(image);
-
-	if (image.inManipulableDomain()) {
+	if (image.inUserMode()) {
 		auto thisThread = getCurrentThread();
 		assert(thisThread);
+
+		localScheduler.get(cpuData).checkPreemption();
 
 		if (thisThread->checkConditions()) {
 			iplDemoteContext(ipl::passive);
 			enableInts();
 
-			Thread::handleConditions(image);
-
-			disableInts();
+			StatelessIrqLock irqLock(frg::dont_lock);
+			handleThreadReturnToUserMode(image, irqLock);
+			irqLock.release();
 		}
+	} else {
+		localScheduler.get(cpuData).checkPreemption(image);
 	}
 }
 
@@ -187,7 +190,24 @@ void handleRiscvInterrupt(Frame *frame, uint64_t code) {
 		handleRiscvIpi(frame);
 	} else if (code == riscv::interrupts::sti) {
 		handleTimerInterrupt();
-		localScheduler.get().checkPreemption(IrqImageAccessor{frame});
+		IrqImageAccessor image{frame};
+		if (image.inUserMode()) {
+			auto thisThread = getCurrentThread();
+			assert(thisThread);
+
+			localScheduler.get().checkPreemption();
+
+			if (thisThread->checkConditions()) {
+				iplDemoteContext(ipl::passive);
+				enableInts();
+
+				StatelessIrqLock irqLock(frg::dont_lock);
+				handleThreadReturnToUserMode(image, irqLock);
+				irqLock.release();
+			}
+		} else {
+			localScheduler.get().checkPreemption(image);
+		}
 	} else if (code == riscv::interrupts::sei) {
 		auto *ourExternalIrq = &riscvExternalIrq.get();
 
@@ -204,7 +224,25 @@ void handleRiscvInterrupt(Frame *frame, uint64_t code) {
 		}
 
 		if (irq) {
-			handleIrq(IrqImageAccessor{frame}, irq);
+			IrqImageAccessor image{frame};
+			handleIrq(image, irq);
+			if (image.inUserMode()) {
+				auto thisThread = getCurrentThread();
+				assert(thisThread);
+
+				localScheduler.get().checkPreemption();
+
+				if (thisThread->checkConditions()) {
+					iplDemoteContext(ipl::passive);
+					enableInts();
+
+					StatelessIrqLock irqLock(frg::dont_lock);
+					handleThreadReturnToUserMode(image, irqLock);
+					irqLock.release();
+				}
+			} else {
+				localScheduler.get().checkPreemption(image);
+			}
 		} else {
 			infoLogger() << "Spurious external interrupt" << frg::endlog;
 		}
@@ -299,7 +337,24 @@ void handleRiscvException(Frame *frame, uint64_t code) {
 
 	// This syscall/fault may have woken up threads on this CPU.
 	// See Scheduler::resume() for details.
-	checkThreadPreemption(FaultImageAccessor{frame});
+	if (frame->umode()) {
+		auto thisThread = getCurrentThread();
+		assert(thisThread);
+
+		checkThreadPreemption();
+
+		if (thisThread->checkConditions()) {
+			FaultImageAccessor image{frame};
+			iplDemoteContext(ipl::passive);
+			enableInts();
+
+			StatelessIrqLock irqLock(frg::dont_lock);
+			handleThreadReturnToUserMode(image, irqLock);
+			irqLock.release();
+		}
+	} else {
+		checkThreadPreemption(FaultImageAccessor{frame});
+	}
 
 	iplLeaveContext(frame->iplState);
 }
@@ -363,22 +418,6 @@ void restoreExecutor(Executor *executor) {
 
 	iplLeaveContext(executor->general()->iplState);
 
-	writeSretCsrs(frame);
-	// TODO: In principle, this is only necessary on CPU migration.
-	if (!frame->umode())
-		frame->tp() = reinterpret_cast<uintptr_t>(cpuData);
-	thorRestoreExecutorRegs(frame);
-}
-
-void handleRiscvWorkOnExecutor(Executor *executor, Frame *frame) {
-	auto *cpuData = getCpuData();
-
-	enableInts();
-	getCurrentThread()->mainWorkQueue()->run();
-	disableInts();
-
-	assert(!cpuData->stashedFs);
-	restoreStaleExtendedState(executor, frame);
 	writeSretCsrs(frame);
 	// TODO: In principle, this is only necessary on CPU migration.
 	if (!frame->umode())

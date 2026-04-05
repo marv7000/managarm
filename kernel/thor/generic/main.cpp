@@ -439,7 +439,7 @@ void handlePageFault(FaultImageAccessor image, uintptr_t address, Word errorCode
 		logFault();
 
 	// Panic on SMAP violations.
-	if(image.inKernelDomain()) {
+	if(!image.inUserMode()) {
 		assert(!(errorCode & kPfUser));
 
 		if(!image.allowUserPages()) {
@@ -476,7 +476,7 @@ void handlePageFault(FaultImageAccessor image, uintptr_t address, Word errorCode
 
 	// Let the UAR error out if it is active.
 	// Otherwise, panic on page faults in the kernel.
-	if(image.inKernelDomain()) {
+	if(!image.inUserMode()) {
 		if(handleUserAccessFault(address, errorCode & kPfWrite, image))
 			return;
 
@@ -538,7 +538,7 @@ void handleOtherFault(FaultImageAccessor image, Interrupt fault) {
 	}
 }
 
-void handleIrq(IrqImageAccessor image, IrqPin *irq) {
+void handleIrq(IrqImageAccessor, IrqPin *irq) {
 	assert(!intsAreEnabled());
 	assert(irq);
 	auto cpuData = getCpuData();
@@ -559,9 +559,6 @@ void handleIrq(IrqImageAccessor image, IrqPin *irq) {
 	entropy[4] = (tsc >> 16) & 0xFF;
 	entropy[5] = (tsc >> 24) & 0xFF;
 	injectEntropy(entropySrcIrqs, cpuData->irqEntropySeq++, entropy, 6);
-
-	// See Scheduler::resume() for details.
-	localScheduler.get(cpuData).checkPreemption(image);
 }
 
 void handleSyscall(SyscallImageAccessor image) {
