@@ -45,7 +45,7 @@ async::result<bool> handlePendingSignalsFromObservation(Process *self) {
 
 	if (!self->delayedSignal) {
 		auto active =
-		    co_await self->threadGroup()->signalContext()->fetchSignal(~self->signalMask(), true);
+		    co_await self->fetchSignal(~self->signalMask(), true);
 		if constexpr (logSignals)
 			std::println("posix: active SignalItem={}", bool(active));
 
@@ -409,7 +409,7 @@ async::result<void> observeThread(std::shared_ptr<Process> self,
 
 				si.pid = self->pid();
 				si.uid = self->threadGroup()->uid();
-				si.code = tgid ? SI_TKILL : SI_USER;
+				si.code = tid ? SI_TKILL : SI_USER;
 			} else {
 				assert(mode == posix::SuperKillMode::QueueInfo);
 
@@ -492,8 +492,10 @@ async::result<void> observeThread(std::shared_ptr<Process> self,
 			if(sn) {
 				if(targetProcessGroup) {
 					targetProcessGroup->issueSignalToGroup(sn, si);
+				} else if (targetThread) {
+					targetThread->issueThreadSignal(sn, si);
 				} else {
-					targetThreadGroup->signalContext()->issueSignal(sn, si);
+					targetThreadGroup->issueThreadGroupSignal(sn, si);
 				}
 			}
 
@@ -562,10 +564,10 @@ async::result<void> observeThread(std::shared_ptr<Process> self,
 			auto seq = gprs[kHelRegArg0];
 
 			if (seq == self->enteredSignalSeq()) {
-				auto check = self->threadGroup()->signalContext()->checkSignal();
+				auto check = self->checkSignal();
 
 				if (!std::get<1>(check))
-					co_await self->threadGroup()->signalContext()->pollSignal(std::get<0>(check), UINT64_C(-1));
+					co_await self->pollSignal(std::get<0>(check), ~self->signalMask());
 			}
 
 			gprs[kHelRegError] = 0;
@@ -594,7 +596,7 @@ async::result<void> observeThread(std::shared_ptr<Process> self,
 			HEL_CHECK(helLoadRegisters(thread.getHandle(), kHelRegsGeneral, &gprs));
 
 			gprs[kHelRegError] = 0;
-			auto [_, active] = self->threadGroup()->signalContext()->checkSignal();
+			auto [_, active] = self->checkSignal();
 			gprs[kHelRegOut0] = active & self->signalMask();
 			HEL_CHECK(helStoreRegisters(thread.getHandle(), kHelRegsGeneral, &gprs));
 			HEL_CHECK(helResume(thread.getHandle()));
@@ -613,7 +615,7 @@ async::result<void> observeThread(std::shared_ptr<Process> self,
 			gprs[kHelRegOut0] = EAGAIN;
 			gprs[kHelRegOut1] = 0;
 
-			auto check = co_await self->threadGroup()->signalContext()->fetchSignal(mask, true);
+			auto check = co_await self->fetchSignal(mask, true);
 			if(check) {
 				if(infoPtr) {
 					siginfo_t siginfo{};
@@ -639,7 +641,7 @@ async::result<void> observeThread(std::shared_ptr<Process> self,
 						}
 					}),
 					async::lambda([&](async::cancellation_token c) -> async::result<void> {
-						item = co_await self->threadGroup()->signalContext()->fetchSignal(mask, false, c);
+						item = co_await self->fetchSignal(mask, false, c);
 					}),
 					async::lambda([&](async::cancellation_token c) -> async::result<void> {
 						co_await async::suspend_indefinitely(c, generation->cancelServe);

@@ -373,7 +373,12 @@ struct CompileSignalFdInfo {
 	signalfd_siginfo *si;
 };
 
-struct SignalContext {
+// Container for a single queue of pending signals; used at both the thread (`struct Process`)
+// and process (`struct ThreadGroup`) level.
+struct SignalQueue {
+	friend struct Process;
+	friend struct ThreadGroup;
+
 private:
 	struct SignalSlot {
 		uint64_t raiseSeq = 0;
@@ -387,25 +392,23 @@ private:
 		> asyncQueue;
 	};
 
-public:
+	void issueSignal(int sn, SignalInfo info, uint64_t seq);
+
+	SignalSlot slots_[64];
+	async::recurring_event signalBell_;
+	uint64_t activeSet_ = 0;
+};
+
+// Context encapsulating the configuration of signal handling for a thread (`struct Process`).
+// Stores signal handler configuration and dispatches signals according to that.
+struct SignalContext {
 	static std::shared_ptr<SignalContext> create();
 	static std::shared_ptr<SignalContext> clone(std::shared_ptr<SignalContext> original);
-
-	SignalContext();
 
 	void resetHandlers();
 
 	SignalHandler getHandler(int sn);
 	SignalHandler changeHandler(int sn, SignalHandler handler);
-
-	void issueSignal(int sn, SignalInfo info);
-
-	async::result<PollSignalResult> pollSignal(uint64_t in_seq, uint64_t mask,
-			async::cancellation_token cancellation = {});
-
-	CheckSignalResult checkSignal();
-
-	async::result<SignalItem *> fetchSignal(uint64_t mask, bool nonBlock, async::cancellation_token ct = {});
 
 	// ------------------------------------------------------------------------
 	// Signal context manipulation.
@@ -430,11 +433,6 @@ public:
 
 private:
 	SignalHandler _handlers[64];
-	SignalSlot _slots[64];
-
-	async::recurring_event _signalBell;
-	uint64_t _currentSeq;
-	uint64_t _activeSet;
 };
 
 template <>
@@ -592,6 +590,17 @@ public:
 		return _signalMask;
 	}
 
+	void issueThreadSignal(int sn, SignalInfo info);
+	CheckSignalResult checkSignal();
+
+	async::result<SignalItem *>
+	fetchSignal(uint64_t mask, bool nonBlock, async::cancellation_token ct = {});
+
+	SignalItem * tryFetchSignal(uint64_t mask);
+
+	async::result<PollSignalResult>
+	pollSignal(uint64_t in_seq, uint64_t mask, async::cancellation_token cancellation = {});
+
 	HelHandle clientPosixLane() { return _clientPosixLane; }
 	posix::ThreadPage *clientThreadPage() { return _clientThreadPage; }
 	void *clientFileTable() { return _clientFileTable; }
@@ -680,6 +689,7 @@ public:
 	// Forces terminate() to be called on next kHelObserveInterrupt.
 	bool forceTermination = false;
 
+	SignalQueue signalQueue;
 	SignalItem *delayedSignal = nullptr;
 	std::optional<SignalContext::SignalHandling> delayedSignalHandling = std::nullopt;
 
@@ -760,6 +770,7 @@ struct ThreadGroup : std::enable_shared_from_this<ThreadGroup> {
 	static void retire(ThreadGroup *group);
 
 	SignalContext *signalContext() { return _signalContext.get(); }
+	SignalQueue &signalQueue() { return signalQueue_; }
 
 	static std::shared_ptr<ThreadGroup> findThreadGroup(ProcessId pid);
 	std::shared_ptr<Process> findThread(pid_t tid);
@@ -873,6 +884,8 @@ struct ThreadGroup : std::enable_shared_from_this<ThreadGroup> {
 		return _state;
 	}
 
+	void issueThreadGroupSignal(int sn, SignalInfo info);
+
 	void setParentDeathSignal(std::optional<int> sig) {
 		parentDeathSignal_ = sig;
 	}
@@ -889,7 +902,7 @@ struct ThreadGroup : std::enable_shared_from_this<ThreadGroup> {
 
 			auto proc_lock = process_.lock();
 			if(proc_lock)
-				proc_lock->threadGroup()->signalContext()->issueSignal(SIGALRM, {});
+				proc_lock->threadGroup()->issueThreadGroupSignal(SIGALRM, {});
 		}
 
 		void expired() override {
@@ -925,7 +938,7 @@ struct ThreadGroup : std::enable_shared_from_this<ThreadGroup> {
 					expired();
 					return;
 				}
-				proc->threadGroup()->signalContext()->issueSignal(signo, TimerSignal{static_cast<int>(timerId)});
+				proc->threadGroup()->issueThreadGroupSignal(signo, TimerSignal{static_cast<int>(timerId)});
 			}
 		}
 
@@ -995,6 +1008,9 @@ private:
 
 	std::shared_ptr<procfs::Link> procfsLink_;
 
+	uint64_t currentSignalSeq_ = 1;
+	// ThreadGroup-wide signal queue for signals with no thread to accept them.
+	SignalQueue signalQueue_;
 	std::optional<int> parentDeathSignal_ = std::nullopt;
 
 	// equivalent to PR_[SG]ET_DUMPABLE
