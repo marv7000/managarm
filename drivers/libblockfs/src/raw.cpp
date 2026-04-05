@@ -76,8 +76,6 @@ namespace {
 
 async::result<protocols::fs::ReadResult> rawRead(void *object, helix_ng::CredentialsView,
 		void *buffer, size_t length, async::cancellation_token) {
-	assert(length);
-
 	uint64_t start;
 	HEL_CHECK(helGetClock(&start));
 
