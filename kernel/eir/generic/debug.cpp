@@ -28,6 +28,8 @@ extern "C" void frg_panic(const char *cstring) {
 	panicLogger() << "frg: Panic! " << cstring << frg::endlog;
 }
 
+extern "C" void frg_log(const char *cstring) { LogSink()(cstring); }
+
 void OutputSink::print(char c) {
 	// Emit to the platform-specific device.
 	// For example, this can log to SBI on RISC-V which often yields expected results.
