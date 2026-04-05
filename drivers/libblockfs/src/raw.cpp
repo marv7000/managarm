@@ -76,8 +76,6 @@ namespace {
 
 async::result<protocols::fs::ReadResult> rawRead(void *object, helix_ng::CredentialsView,
 		void *buffer, size_t length, async::cancellation_token) {
-	assert(length);
-
 	uint64_t start;
 	HEL_CHECK(helGetClock(&start));
 
@@ -100,6 +98,43 @@ async::result<protocols::fs::ReadResult> rawRead(void *object, helix_ng::Credent
 	auto readMemory = co_await helix_ng::readMemory(
 			helix::BorrowedDescriptor(self->rawFs->frontalMemory),
 			chunk_offset, chunkSize, buffer);
+	HEL_CHECK(readMemory.error());
+
+	uint64_t end;
+	HEL_CHECK(helGetClock(&end));
+
+	ostContext.emit(
+		ostEvtRawRead,
+		ostAttrNumBytes(length),
+		ostAttrTime(end - start)
+	);
+
+	co_return chunkSize;
+}
+
+async::result<protocols::fs::ReadResult>
+rawPread(void *object, int64_t offset, helix_ng::CredentialsView, void *buffer, size_t length) {
+	size_t unsignedOffset = offset;
+
+	uint64_t start;
+	HEL_CHECK(helGetClock(&start));
+
+	auto self = static_cast<raw::OpenFile *>(object);
+	// TODO(geert): pass cancellation token through here
+	auto file_size = co_await self->rawFs->device->getSize();
+
+	if(unsignedOffset >= file_size)
+		co_return std::unexpected{protocols::fs::Error::endOfFile};
+
+	auto remaining = file_size - unsignedOffset;
+	auto chunkSize = std::min(length, remaining);
+	if(!chunkSize)
+		co_return std::unexpected{protocols::fs::Error::endOfFile};
+
+	// TODO(geert): use cancellation token here
+	auto readMemory = co_await helix_ng::readMemory(
+			helix::BorrowedDescriptor(self->rawFs->frontalMemory),
+			unsignedOffset, chunkSize, buffer);
 	HEL_CHECK(readMemory.error());
 
 	uint64_t end;
@@ -169,6 +204,7 @@ constinit protocols::fs::FileOperations rawOperations {
 	.seekRel = rawSeekRel,
 	.seekEof = rawSeekEof,
 	.read = rawRead,
+	.pread = rawPread,
 	.ioctl = rawIoctl,
 	.flock = rawFlock,
 };
