@@ -43,27 +43,59 @@ class CiBoot:
 
     async def _launch(self, script):
         print("Launching script:", repr(script))
-        process = await asyncio.create_subprocess_exec(
-            "/usr/bin/bash",
-            "-c",
-            script,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+
+        # Use a PTY to force line buffering.
+        master_fd, slave_fd = os.openpty()
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "/usr/bin/bash",
+                "-c",
+                script,
+                stdout=slave_fd,
+                stderr=slave_fd,
+            )
+        finally:
+            os.close(slave_fd)
 
         await asyncio.gather(
-            self._handle_output("stdout", process.stdout),
-            self._handle_output("stderr", process.stderr),
+            self._handle_output("stdout", master_fd),
             process.wait(),
         )
+
+        os.close(master_fd)
 
         print(f"Script terminated with {process.returncode}")
         self._emit({"m": "exit", "exitcode": process.returncode})
 
-    async def _handle_output(self, kind, stream):
-        async for line in stream:
-            print(f"{kind}: " + line.rstrip().decode("utf8", errors="backslashreplace"))
-            self._emit({"m": kind, "data": base64.b64encode(line).decode("ascii")})
+    async def _handle_output(self, kind, fd):
+        loop = asyncio.get_event_loop()
+        done = asyncio.Event()
+
+        partial = b""
+        def on_readable():
+            nonlocal partial
+            try:
+                data = os.read(fd, 4096)
+            except OSError:
+                # Linux emits EIO when the slave PTY is closed.
+                data = b""
+            # Stop reading on zero length read or EIO.
+            if not data:
+                if partial:
+                    print(f"{kind}: " + partial.rstrip().decode("utf8", errors="backslashreplace"))
+                    self._emit({"m": kind, "data": base64.b64encode(partial).decode("ascii")})
+                loop.remove_reader(fd)
+                done.set()
+                return
+            partial += data
+            while b"\n" in partial:
+                line, partial = partial.split(b"\n", 1)
+                line += b"\n"
+                print(f"{kind}: " + line.rstrip().decode("utf8", errors="backslashreplace"))
+                self._emit({"m": kind, "data": base64.b64encode(line).decode("ascii")})
+
+        loop.add_reader(fd, on_readable)
+        await done.wait()
 
     def _emit(self, msg):
         line = json.dumps(msg)
